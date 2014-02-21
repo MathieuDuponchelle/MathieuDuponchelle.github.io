@@ -262,7 +262,9 @@ hr.soften {
   font-weight: 300;
 }
 .marketing h2 {
-  font-size: 22px;
+  margin-top: 30px;
+  margin-bottom: 30px;
+  font-size: 40px;
 }
 .marketing p {
   margin-right: 10px;
