@@ -40,19 +40,6 @@ bits of this video, as it also seems to be content-aware at some points, but we 
 <h2>
 Sounds sweet, where's the code ?
 </h2>
-<p>
-Well, it's here, a word of warning though : to be able to successfully execute it you'll need:
-</p>
-
-* To follow these instructions : http://wiki.pitivi.org/wiki/Building_with_GES
-* To apply that branch on GES master : https://github.com/MathieuDuponchelle/PitiviGes/tree/video_mixing
-* To apply this branch on gst-plugins-good : https://github.com/MathieuDuponchelle/gst-plugins-good/mixerfix
-* And to cherry-pick the two topmost commits of that branch on gnonlin : https://github.com/MathieuDuponchelle/gnonlin/commits/eos_thread
-
-It sounds painful and it is :) Soon enough though, only the first step will have to be done, and, hopefully as fast as possible, you'll
-be able to get GES 1.0 from your favourite distro's package manager !
-
-</br>
 
 <div>
 <script src="https://gist.github.com/MathieuDuponchelle/5736992.js"> </script>

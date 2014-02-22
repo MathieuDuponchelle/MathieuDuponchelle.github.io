@@ -114,7 +114,7 @@ I know that what we do is right, and that requesting money for stabilization fir
 Obviously, I hope that you will donate to the campaign, but I also hope that after taking the time to read that rather 
 lengthy blogpost in its entirety, you will be able to spread the message, and explain why what we do is important and good.
 
-Free and Open Source video edition is something that can help make the world a better place, as it gives people all
+Free and Open Source video editing is something that can help make the world a better place, as it gives people all
 around the world one more tool to express themselves, fight oppression, create happiness and spread love.
 
 Hoping you'll spread the love too, thanks for reading !
