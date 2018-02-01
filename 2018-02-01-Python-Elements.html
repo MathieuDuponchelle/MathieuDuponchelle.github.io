@@ -35,10 +35,10 @@
 
 <script src="assets/js/lines_around_headings.js"></script>
 
+<script src="assets/js/github-comment-loader.js"></script>
 <script src="assets/js/prism-core.js"></script>
 <script src="assets/js/prism-autoloader.js"></script>
 <script src="assets/js/prism_autoloader_path_override.js"></script>
-<script src="assets/js/github-comment-loader.js"></script>
 <script src="assets/js/trie.js"></script>
 
 
@@ -513,6 +513,10 @@ fakesink silent=false
 <pre><code class="language-bash">GST_PLUGIN_PATH=$GST_PLUGIN_PATH:$PWD gst-launch-1.0 -v audiotestsrc_py is-live=true ! \
 fakesink silent=false
 </code></pre>
+<blockquote>
+<p>In this context, we are not really producing data live, but simply simulating
+by having the base class wait</p>
+</blockquote>
 <h2 id="conclusion">Conclusion</h2>
 <p>We have implemented a simplified version of <code>audiotestsrc</code> here, the reader
 can update the code to support more features and familiarize themselves with
