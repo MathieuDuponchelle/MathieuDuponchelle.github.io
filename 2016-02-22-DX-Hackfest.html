@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<base href=".">
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+
+<title>Back from the DX hackfest</title>
+
+<link rel="stylesheet" href="assets/css/custom_bootstrap.css" type="text/css">
+<link rel="stylesheet" href="assets/css/bootstrap-toc.min.css" type="text/css">
+<link rel="stylesheet" href="assets/css/frontend.css" type="text/css">
+<link rel="stylesheet" href="assets/css/jquery.mCustomScrollbar.min.css">
+
+<link rel="stylesheet" href="assets/css/prism.css" type="text/css">
+
+<script src="assets/js/mustache.min.js"></script>
+<script src="assets/js/jquery.js"></script>
+<script src="assets/js/scrollspy.js"></script>
+<script src="assets/js/bootstrap.js"></script>
+<script src="assets/js/typeahead.jquery.min.js"></script>
+<script src="assets/js/search.js"></script>
+<script src="assets/js/isotope.pkgd.min.js"></script>
+<script src="assets/js/compare-versions.js"></script>
+<script src="assets/js/jquery.mCustomScrollbar.concat.min.js"></script>
+<script src="assets/js/bootstrap-toc.min.js"></script>
+<script src="assets/js/jquery.touchSwipe.min.js"></script>
+<script src="assets/js/anchor.min.js"></script>
+<script src="assets/js/tag_filtering.js"></script>
+<script src="assets/js/language_switching.js"></script>
+
+<script src="assets/js/lines_around_headings.js"></script>
+
+<script src="assets/js/prism-core.js"></script>
+<script src="assets/js/prism-autoloader.js"></script>
+<script src="assets/js/prism_autoloader_path_override.js"></script>
+<script src="assets/js/trie.js"></script>
+
+
+</head>
+
+<body class="no-script
+" data-spy="scroll" data-target="#toc" data-offset="70">
+
+<script>
+$('body').removeClass('no-script');
+</script>
+
+<nav class="navbar navbar-fixed-top navbar-default" id="topnav">
+	<div class="container-fluid">
+		<div class="navbar-right">
+			<a id="toc-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar-wrapper" aria-expanded="false">
+				<span class="sr-only">Toggle navigation</span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+			</button>
+			<form action="" class="navbar-form pull-right" id="navbar-search-form">
+                               <div class="form-group has-feedback">
+                                       <input type="text" class="form-control input-sm" name="search" id="sidenav-lookup-field" placeholder="search" disabled>
+				       <span class="glyphicon glyphicon-search form-control-feedback" id="search-mgn-glass"></span>
+                               </div>
+                        </form>
+		</div>
+		<div class="navbar-header">
+			<a id="sidenav-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<a id="home-link" href="index.html" class="hotdoc-navbar-brand">
+				<img src="assets/images/home.svg" alt="Home">
+			</a>
+		</div>
+		<div class="navbar-collapse collapse" id="navbar-wrapper">
+			<ul class="nav navbar-nav" id="menu">
+							</ul>
+			<div class="hidden-xs hidden-sm navbar-text navbar-center">
+							</div>
+		</div>
+	</div>
+</nav>
+
+<main>
+<div data-extension="core" data-hotdoc-in-toplevel="True" data-hotdoc-project="blog-1.0" data-hotdoc-ref="2016-02-22-DX-Hackfest.html" class="page_container" id="page-wrapper">
+<script src="assets/js/utils.js"></script>
+
+<div class="panel panel-collapse oc-collapsed" id="sidenav" data-hotdoc-role="navigation">
+	<script src="assets/js/navigation.js"></script>
+	<script src="assets/js/sitemap.js"></script>
+</div>
+
+<div id="body">
+	<div id="main">
+				    <div id="page-description" data-hotdoc-source="2016-02-22-DX-Hackfest.markdown" data-hotdoc-role="main">
+        <h2 id="back-from-the-dx-hackfest">Back from the DX hackfest</h2>
+<p>I had the chance to attend the GNOME developer experience hackfest three weeks ago, I'm ashamed to admit three weeks went by before I took the time to write this post!</p>
+<p>A lot of people I met there I already knew, I was happy to meet some people I didn't yet, like James, who's working on <a href="https://github.com/purpleidea/oh-my-vagrant">Oh-My-Vagrant</a>.</p>
+<p>Philip Withnall has already done a good job at summarizing the general issues we looked at as a group during this hackfest in <a href="https://tecnocode.co.uk/2016/02/01/dx-hackfest-2016-aftermath/">this blogpost</a>, so this post will revolve around my own experience over there.</p>
+<p>I am currently working on <a href="https://github.com/hotdoc/hotdoc">hotdoc</a> for <a href="https://www.collabora.com/">collabora</a>, and I spent the hackfest presenting it to the documentation team members (Ekaterina Gerasimova, Frédéric Péters, Bastian Ilso and Alexandre Franke), discussing its future use with them and Philip Chimento, and making some improvements to it with the help of Thibault Saunier.</p>
+<h4 id="hotdoc-improvements">Hotdoc improvements</h4>
+<p>I helped Frédéric with testing porting gtk from gtk-doc to hotdoc, and landed a patch from him in hotdoc-gi-extension, the resulting documentation seemed overall correct.</p>
+<p>I worked with Thibault Saunier to implement a <a href="https://people.collabora.com/%7Emeh/hotdoc_hotdoc/html/syntax-extensions.html#smart-file-inclusion-syntax">smart include feature</a> in hotdoc.</p>
+<h4 id="gnome-builder">GNOME Builder</h4>
+<p>I discussed how to use hotdoc as a <a href="https://wiki.gnome.org/Apps/Builder">GNOME Builder</a> plugin with Christian Hergert, but the solution he advised me to follow actually falls short because hotdoc is python2, and it seems libpeas cannot handle both python2 and python3 in the same process. I'm still a bit confused as to why this limitation would exist, as the proposed solution involved exposing a D-Bus service, but I'm sure we'll find a better solution when we need to.</p>
+<h4 id="gnome-developer-portal">GNOME developer portal</h4>
+<p>I discussed the future of <a href="https://developer.gnome.org/">https://developer.gnome.org/</a> with the documentation team. They liked the search interface in hotdoc (it does work quite well :), and we all agreed that a tighter integration with actual API references would be nice to have, amongst various other things (online editing for example).</p>
+<p>The website is currently implemented as <a href="https://github.com/GNOME/gnome-devel-docs/">a series of mallard pages</a>. Hotdoc does not read mallard pages, and it isn't part of my current plans. A possible way forward would be to drop mallard altogether, and have all the pages be "hotdoc-flavored" markdown pages. I think this could make sense because:</p>
+<ul>
+<li>gnome-devel-docs doesn't make an extensive use of mallard.</li>
+<li>markdown pages present a significantly lower barrier to entry, and most people are familiar with the syntax.</li>
+<li>the developer site and the API references it would link to would share the same format for standalone documentation source files.</li>
+</ul>
+<p>I have since then implemented a <a href="https://github.com/jgm/pandoc/pull/2700">simple pandoc reader</a>, and used it to make a very naive port of gnome-devel-docs, the result can be seen <a href="https://people.collabora.com/%7Emeh/dgo_hotdoc/html/index.html">here</a></p>
+<p>This port is naive because I made absolutely no manual edits to the produced markdown files, which explains why the index page looks pretty ugly, but pages like <a href="https://people.collabora.com/%7Emeh/dgo_hotdoc/html/overview-media.html">https://people.collabora.com/~meh/dgo_hotdoc/html/overview-media.html</a> are pretty faithful to the source, and it would mostly be a matter of custom CSS and trivial edits to get the thing to really look good.</p>
+<p>You can have a look at the generated markdown files <a href="https://github.com/MathieuDuponchelle/gnome-devel-docs/tree/hotdoc/markdown_files">here</a>.</p>
+<h4 id="philip-chimentos-devdocs-work">Philip Chimento's devdocs work</h4>
+<p>Philip Chimento has been working on a <a href="https://github.com/ptomato/gobject-introspection/commits/wip/ptomato/devdocs">fork of devdocs</a>, in an effort to create a javascriot developer portal for GNOME. I see some drawbacks with his approach, which we've discussed together and I will not detail here, but overall his current solution has the advantage of code reuse, and lightweightness, as the output is generated stictly from gir files.</p>
+<p>My opinion on this is that his work is a nice short-term solution to a clear problem (gathering together the javascript documentation for most (all ?) GNOME libraries, and I suggested linking to it on the current portal.</p>
+<p>However I think the design of devdocs and his solution will fall short for the long-term requirements that the GNOME documentation team seems to set, and Philip seemed to agree.</p>
+<p>This is still a very open issue, and Philip and I definitely intend to work together to provide the best possible experience for GNOME hackers, newbies and senior alike.</p>
+
+    </div>
+        
+
+
+
+
+		
+	</div>
+	<div id="search_results">
+		<p>The results of the search are</p>
+	</div>
+	<hr>
+	<div id="footer">
+		    
+
+	</div>
+</div>
+
+<div id="toc-column">
+	
+		<div class="edit-button">
+		
+
+	</div>
+		<div id="toc-wrapper">
+		<nav id="toc"></nav>
+	</div>
+</div>
+</div>
+</main>
+
+</body>
+
+<script src="assets/js/navbar_offset_scroller.js"></script>
+</html>

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<base href=".">
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+
+<title>Back from the GST hackfest</title>
+
+<link rel="stylesheet" href="assets/css/custom_bootstrap.css" type="text/css">
+<link rel="stylesheet" href="assets/css/bootstrap-toc.min.css" type="text/css">
+<link rel="stylesheet" href="assets/css/frontend.css" type="text/css">
+<link rel="stylesheet" href="assets/css/jquery.mCustomScrollbar.min.css">
+
+<link rel="stylesheet" href="assets/css/prism.css" type="text/css">
+
+<script src="assets/js/mustache.min.js"></script>
+<script src="assets/js/jquery.js"></script>
+<script src="assets/js/scrollspy.js"></script>
+<script src="assets/js/bootstrap.js"></script>
+<script src="assets/js/typeahead.jquery.min.js"></script>
+<script src="assets/js/search.js"></script>
+<script src="assets/js/isotope.pkgd.min.js"></script>
+<script src="assets/js/compare-versions.js"></script>
+<script src="assets/js/jquery.mCustomScrollbar.concat.min.js"></script>
+<script src="assets/js/bootstrap-toc.min.js"></script>
+<script src="assets/js/jquery.touchSwipe.min.js"></script>
+<script src="assets/js/anchor.min.js"></script>
+<script src="assets/js/tag_filtering.js"></script>
+<script src="assets/js/language_switching.js"></script>
+
+<script src="assets/js/lines_around_headings.js"></script>
+
+<script src="assets/js/prism-core.js"></script>
+<script src="assets/js/prism-autoloader.js"></script>
+<script src="assets/js/prism_autoloader_path_override.js"></script>
+<script src="assets/js/trie.js"></script>
+
+
+</head>
+
+<body class="no-script
+" data-spy="scroll" data-target="#toc" data-offset="70">
+
+<script>
+$('body').removeClass('no-script');
+</script>
+
+<nav class="navbar navbar-fixed-top navbar-default" id="topnav">
+	<div class="container-fluid">
+		<div class="navbar-right">
+			<a id="toc-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar-wrapper" aria-expanded="false">
+				<span class="sr-only">Toggle navigation</span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+			</button>
+			<form action="" class="navbar-form pull-right" id="navbar-search-form">
+                               <div class="form-group has-feedback">
+                                       <input type="text" class="form-control input-sm" name="search" id="sidenav-lookup-field" placeholder="search" disabled>
+				       <span class="glyphicon glyphicon-search form-control-feedback" id="search-mgn-glass"></span>
+                               </div>
+                        </form>
+		</div>
+		<div class="navbar-header">
+			<a id="sidenav-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<a id="home-link" href="index.html" class="hotdoc-navbar-brand">
+				<img src="assets/images/home.svg" alt="Home">
+			</a>
+		</div>
+		<div class="navbar-collapse collapse" id="navbar-wrapper">
+			<ul class="nav navbar-nav" id="menu">
+							</ul>
+			<div class="hidden-xs hidden-sm navbar-text navbar-center">
+							</div>
+		</div>
+	</div>
+</nav>
+
+<main>
+<div data-extension="core" data-hotdoc-in-toplevel="True" data-hotdoc-project="blog-1.0" data-hotdoc-ref="2016-05-26-GST-Hackfest.html" class="page_container" id="page-wrapper">
+<script src="assets/js/utils.js"></script>
+
+<div class="panel panel-collapse oc-collapsed" id="sidenav" data-hotdoc-role="navigation">
+	<script src="assets/js/navigation.js"></script>
+	<script src="assets/js/sitemap.js"></script>
+</div>
+
+<div id="body">
+	<div id="main">
+				    <div id="page-description" data-hotdoc-source="2016-05-26-GST-Hackfest.markdown" data-hotdoc-role="main">
+        <h1 id="back-from-the-gst-hackfest">Back from the GST hackfest</h1>
+<p>I was once again kindly sponsored by <a href="https://www.collabora.com/">Collabora</a> to temporarily relocate my hacking environment to a place filled with awesome people.
+This time the place was <a href="https://en.wikipedia.org/wiki/Thessaloniki">Thessaloniki</a>, and the people were GStreamer developers.</p>
+<h2 id="getting-there">Getting there</h2>
+<p>I hadn't taken any vacation since I've started working for Collabora, two years ago (mandatory "geez, time flies"), apart from one day or two for Christmas-related
+activities, so I decided I'd take two weeks, and do a little road trip across Europe. Strangely enough my girlfriend, who when I went to the Staines (near London) hackfest
+only asked when I'd come back, was already packing her swimsuit this time.</p>
+<p>After a one-day stop in Venice (fortunately not too crowded at this time of year), and a three-day visit of <a href="https://en.wikipedia.org/wiki/Dubrovnik">Dubrovnik</a> aka King's landing,
+our intention was to get to Thessaloniki through Albania and arrive on the evening before the hackfest started. Albanian customs, however, didn't seem to share this intention at all,
+and we ended up having to cross Montenegro from South to North, get in Serbia, go East and be refused entry in Kosovo, go East again and finally get to Thessaloniki through Macedonia.</p>
+<p>Needless to say we arrived at 10 A.M. on the day the hackfest started.</p>
+<p>I briefly logged in to the IRC channel, told everyone I'd have to be excused for the day, got greeted by Edward Hervey mumbling stuff about "equations everywhere", and
+others suggesting I should have engaged in bribery (I will not name names here), logged off and slept for 15 hours.</p>
+<h2 id="second-actually-my-first-day">Second (actually my first) day</h2>
+<p>I arrived at the hackfest to find a nice, two-storey building reserved for our usage, and <a href="https://lubosz.wordpress.com/">Lubosz Sarnecki</a> in the middle of
+kilometers of cables, and enough hardware to open a small VR shop.
+He needed a powerful GPU to set up the leapmotion's <a href="https://developer.leapmotion.com/gallery/blocks">blocks demo</a>, and we figured my laptop would
+do the trick. We set everything up, then struggled for some time until accepting it really wouldn't be up to the task.</p>
+<p>We ended up borrowing a desktop PC, which proved to be up to the task, and after some fiddling the demo was finally set up and working smoothly.</p>
+<p>It was well worth the wait: leapmotion's tech is amazing, and after some time making and manipulating blocks, whoever isn't convinced about the future of VR might well
+reconsider! I'm really curious to see the games people will come up with, a VR remake of <a href="https://www.youtube.com/watch?v=Ue4i44e_7W8">Black &amp; White</a> would
+be pretty awesome if you ask me.</p>
+<p>More to the point, Lubosz is currently writing a GStreamer video filter to transform streams for [Insert VR headset here] consumption, but as far as I understand
+his work is still in progress, and not yet demoable.</p>
+<p>It was already late, and after a few people had taken turns trying out the demo, the day was already gone.</p>
+<h2 id="third-actually-my-second-day">Third (actually my second) day</h2>
+<p>My original goal for this hackfest was to implement a hotdoc extension for documenting GStreamer plugins, but with one day left that was hardly
+a completable goal, and after talking with Tim-Philipp Müller, it appeared he had more immediate concerns in terms of documentation, namely
+porting existing content to markdown. I briefly talked him into sticking to the CommonMark specification, and using hotdoc to arrange it all
+together. Olivier Crete started porting the contents of gstreamer.com, and I started work on the Plugin Writer's manual.</p>
+<p>It was decided a new repository for the documentation would be created, and that we would update https://gstreamer.freedesktop.org/ incrementally
+with its contents, once maintainers are happy with the proposed solution. I still need to finalize my port of the manual, hopefully by the end
+of this week I'll have something decent to propose.</p>
+<h2 id="conclusion">Conclusion</h2>
+<p>I'm afraid I don't have much to report on the GStreamer side of the GStreamer hackfest, hopefully others will fill that gap, I'll update this page
+with links to other people's posts.</p>
+<ul>
+<li>Sebastian wrote about <a href="https://coaxion.net/blog/2016/05/writing-gstreamer-plugins-and-elements-in-rust/">writing gstreamer elements in rust</a>
+</li>
+</ul>
+
+    </div>
+        
+
+
+
+
+		
+	</div>
+	<div id="search_results">
+		<p>The results of the search are</p>
+	</div>
+	<hr>
+	<div id="footer">
+		    
+
+	</div>
+</div>
+
+<div id="toc-column">
+	
+		<div class="edit-button">
+		
+
+	</div>
+		<div id="toc-wrapper">
+		<nav id="toc"></nav>
+	</div>
+</div>
+</div>
+</main>
+
+</body>
+
+<script src="assets/js/navbar_offset_scroller.js"></script>
+</html>

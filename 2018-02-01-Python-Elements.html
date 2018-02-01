@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<base href=".">
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+
+<title>How to write GStreamer (1.0) elements in python</title>
+
+<link rel="stylesheet" href="assets/css/custom_bootstrap.css" type="text/css">
+<link rel="stylesheet" href="assets/css/bootstrap-toc.min.css" type="text/css">
+<link rel="stylesheet" href="assets/css/frontend.css" type="text/css">
+<link rel="stylesheet" href="assets/css/jquery.mCustomScrollbar.min.css">
+
+<link rel="stylesheet" href="assets/css/prism.css" type="text/css">
+
+<script src="assets/js/mustache.min.js"></script>
+<script src="assets/js/jquery.js"></script>
+<script src="assets/js/scrollspy.js"></script>
+<script src="assets/js/bootstrap.js"></script>
+<script src="assets/js/typeahead.jquery.min.js"></script>
+<script src="assets/js/search.js"></script>
+<script src="assets/js/isotope.pkgd.min.js"></script>
+<script src="assets/js/compare-versions.js"></script>
+<script src="assets/js/jquery.mCustomScrollbar.concat.min.js"></script>
+<script src="assets/js/bootstrap-toc.min.js"></script>
+<script src="assets/js/jquery.touchSwipe.min.js"></script>
+<script src="assets/js/anchor.min.js"></script>
+<script src="assets/js/tag_filtering.js"></script>
+<script src="assets/js/language_switching.js"></script>
+
+<script src="assets/js/lines_around_headings.js"></script>
+
+<script src="assets/js/prism-core.js"></script>
+<script src="assets/js/prism-autoloader.js"></script>
+<script src="assets/js/prism_autoloader_path_override.js"></script>
+<script src="assets/js/github-comment-loader.js"></script>
+<script src="assets/js/trie.js"></script>
+
+
+</head>
+
+<body class="no-script
+" data-spy="scroll" data-target="#toc" data-offset="70">
+
+<script>
+$('body').removeClass('no-script');
+</script>
+
+<nav class="navbar navbar-fixed-top navbar-default" id="topnav">
+	<div class="container-fluid">
+		<div class="navbar-right">
+			<a id="toc-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar-wrapper" aria-expanded="false">
+				<span class="sr-only">Toggle navigation</span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+			</button>
+			<form action="" class="navbar-form pull-right" id="navbar-search-form">
+                               <div class="form-group has-feedback">
+                                       <input type="text" class="form-control input-sm" name="search" id="sidenav-lookup-field" placeholder="search" disabled>
+				       <span class="glyphicon glyphicon-search form-control-feedback" id="search-mgn-glass"></span>
+                               </div>
+                        </form>
+		</div>
+		<div class="navbar-header">
+			<a id="sidenav-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<a id="home-link" href="index.html" class="hotdoc-navbar-brand">
+				<img src="assets/images/home.svg" alt="Home">
+			</a>
+		</div>
+		<div class="navbar-collapse collapse" id="navbar-wrapper">
+			<ul class="nav navbar-nav" id="menu">
+							</ul>
+			<div class="hidden-xs hidden-sm navbar-text navbar-center">
+							</div>
+		</div>
+	</div>
+</nav>
+
+<main>
+<div data-extension="core" data-hotdoc-in-toplevel="True" data-hotdoc-project="blog-1.0" data-hotdoc-ref="2018-02-01-Python-Elements.html" class="page_container" id="page-wrapper">
+<script src="assets/js/utils.js"></script>
+
+<div class="panel panel-collapse oc-collapsed" id="sidenav" data-hotdoc-role="navigation">
+	<script src="assets/js/navigation.js"></script>
+	<script src="assets/js/sitemap.js"></script>
+</div>
+
+<div id="body">
+	<div id="main">
+				    <div id="page-description" data-hotdoc-source="2018-02-01-Python-Elements.markdown" data-hotdoc-role="main">
+        <h1 id="how-to-write-gstreamer-10-elements-in-python">How to write GStreamer (1.0) elements in python</h1>
+<p>While it turns out writing meaningful elements using GStreamer through
+<a href="https://pygobject.readthedocs.io/en/latest/">pygobject</a> was badly broken since <a href="https://gitlab.gnome.org/GNOME/pygobject/merge_requests/10">2014</a>, and it had never
+been possible to <a href="https://gitlab.gnome.org/GNOME/pygobject/merge_requests/8">expose properties</a> on said elements
+anyway, these minor details shouldn't stop us from leveraging some of
+the unique and awesome packages at the disposal of the python developer
+from GStreamer, and that's what we'll do in this series of posts.</p>
+<h2 id="disclaimer">Disclaimer</h2>
+<p>Writing GStreamer elements in python is usually a terrible idea:</p>
+<ul>
+<li>
+<p>Python is slow, actual data processing should be avoided at all cost,
+and instead delegated to C libraries such as <a href="http://www.numpy.org/">numpy</a>, which is exactly what
+we'll do in this part.</p>
+</li>
+<li>
+<p>The infamous <a href="https://wiki.python.org/moin/GlobalInterpreterLock">GIL</a> enforces serialization, which means python elements will
+not be able to take advantage of the multithreading capabilities of modern
+platforms.</p>
+</li>
+</ul>
+<p>The only valid reasons for ignoring these restrictions are, to the best of
+my knowledge:</p>
+<ul>
+<li>
+<p>Python is the only language you know how to use.</p>
+</li>
+<li>
+<p>You want to use a python package that has no equivalent elsewhere, for
+example for scientific computing.</p>
+</li>
+<li>
+<p>Python rocks, and you don't intend to do anything CPU-intensive anyway.</p>
+</li>
+<li>
+<p>All of the above.</p>
+</li>
+</ul>
+<p>The obvious recommendation these days, if you do not want to deal with
+low-level concerns such as data races and memory safety, is <a href="https://www.rust-lang.org/en-US/">Rust</a>. More
+information can be found <a href="https://sdroege.github.io/rustdoc/gstreamer/gstreamer/">here</a> and in
+<a href="https://coaxion.net/blog/2018/01/how-to-write-gstreamer-elements-in-rust-part-1-a-video-filter-for-converting-rgb-to-grayscale/">this series of posts</a> from Sebastian Dröge.</p>
+<h2 id="some-code-right-off-the-bat">Some code right off the bat</h2>
+<pre><code class="language-python">import gi
+
+gi.require_version('Gst', '1.0')
+gi.require_version('GstBase', '1.0')
+gi.require_version('GstAudio', '1.0')
+
+from gi.repository import Gst, GLib, GObject, GstBase, GstAudio
+import numpy as np
+
+OCAPS = Gst.Caps.from_string (
+        'audio/x-raw, format=F32LE, layout=interleaved, rate=44100, channels=2')
+
+SAMPLESPERBUFFER = 1024
+
+DEFAULT_FREQ = 440
+DEFAULT_VOLUME = 0.8
+DEFAULT_MUTE = False
+DEFAULT_IS_LIVE = False
+
+class AudioTestSrc(GstBase.BaseSrc):
+    __gstmetadata__ = ('CustomSrc','Src', \
+                      'Custom test src element', 'Mathieu Duponchelle')
+
+    __gproperties__ = {
+        "freq": (int,
+                 "Frequency",
+                 "Frequency of test signal",
+                 1,
+                 GLib.MAXINT,
+                 DEFAULT_FREQ,
+                 GObject.ParamFlags.READWRITE
+                ),
+        "volume": (float,
+                   "Volume",
+                   "Volume of test signal",
+                   0.0,
+                   1.0,
+                   DEFAULT_VOLUME,
+                   GObject.ParamFlags.READWRITE
+                  ),
+        "mute": (bool,
+                 "Mute",
+                 "Mute the test signal",
+                 DEFAULT_MUTE,
+                 GObject.ParamFlags.READWRITE
+                ),
+        "is-live": (bool,
+                 "Is live",
+                 "Whether to act as a live source",
+                 DEFAULT_IS_LIVE,
+                 GObject.ParamFlags.READWRITE
+                ),
+    }
+
+    __gsttemplates__ = Gst.PadTemplate.new("src",
+                                           Gst.PadDirection.SRC,
+                                           Gst.PadPresence.ALWAYS,
+                                           OCAPS)
+
+    def __init__(self):
+        GstBase.BaseSrc.__init__(self)
+        self.info = GstAudio.AudioInfo()
+
+        self.freq = DEFAULT_FREQ
+        self.volume = DEFAULT_VOLUME
+        self.mute = DEFAULT_MUTE
+
+        self.set_live(DEFAULT_IS_LIVE)
+        self.set_format(Gst.Format.TIME)
+
+    def do_set_caps(self, caps):
+        self.info.from_caps(caps)
+        self.set_blocksize(self.info.bpf * SAMPLESPERBUFFER)
+        return True
+
+    def do_get_property(self, prop):
+        if prop.name == 'freq':
+            return self.freq
+        elif prop.name == 'volume':
+            return self.volume
+        elif prop.name == 'mute':
+            return self.mute
+        elif prop.name == 'is-live':
+            return self.is_live
+        else:
+            raise AttributeError('unknown property %s' % prop.name)
+
+    def do_set_property(self, prop, value):
+        if prop.name == 'freq':
+            self.freq = value
+        elif prop.name == 'volume':
+            self.volume = value
+        elif prop.name == 'mute':
+            self.mute = value
+        elif prop.name == 'is-live':
+            self.set_live(value)
+        else:
+            raise AttributeError('unknown property %s' % prop.name)
+
+    def do_start (self):
+        self.next_sample = 0
+        self.next_byte = 0
+        self.next_time = 0
+        self.accumulator = 0
+        self.generate_samples_per_buffer = SAMPLESPERBUFFER
+
+        return True
+
+    def do_gst_base_src_query(self, query):
+        if query.type == Gst.QueryType.LATENCY:
+            latency = Gst.util_uint64_scale_int(self.generate_samples_per_buffer,
+                    Gst.SECOND, self.info.rate)
+            is_live = self.is_live
+            query.set_latency(is_live, latency, Gst.CLOCK_TIME_NONE)
+            res = True
+        else:
+            res = GstBase.BaseSrc.do_query(self, query)
+        return res
+
+    def do_get_times(self, buf):
+        end = 0
+        start = 0
+        if self.is_live:
+            ts = buf.pts
+            if ts != Gst.CLOCK_TIME_NONE:
+                duration = buf.duration
+                if duration != Gst.CLOCK_TIME_NONE:
+                    end = ts + duration
+                start = ts
+        else:
+            start = Gst.CLOCK_TIME_NONE
+            end = Gst.CLOCK_TIME_NONE
+
+        return start, end
+
+    def do_create(self, offset, length):
+        if length == -1:
+            samples = SAMPLESPERBUFFER
+        else:
+            samples = int(length / self.info.bpf)
+
+        self.generate_samples_per_buffer = samples
+
+        bytes_ = samples * self.info.bpf
+
+        next_sample = self.next_sample + samples
+        next_byte = self.next_byte + bytes_
+        next_time = Gst.util_uint64_scale_int(next_sample, Gst.SECOND, self.info.rate)
+
+        if not self.mute:
+            r = np.repeat(
+                    np.arange(self.accumulator, self.accumulator + samples),
+                    self.info.channels)
+            data = ((np.sin(2 * np.pi * r * self.freq / self.info.rate) * self.volume)
+                    .astype(np.float32))
+        else:
+            data = [0] * bytes_
+
+        buf = Gst.Buffer.new_wrapped(bytes(data))
+
+        buf.offset = self.next_sample
+        buf.offset_end = next_sample
+        buf.pts = self.next_time
+        buf.duration = next_time - self.next_time
+
+        self.next_time = next_time
+        self.next_sample = next_sample
+        self.next_byte = next_byte
+        self.accumulator += samples
+
+        return (Gst.FlowReturn.OK, buf)
+
+
+__gstelementfactory__ = ("audiotestsrc_py", Gst.Rank.NONE, AudioTestSrc)
+</code></pre>
+<h2 id="discussion">Discussion</h2>
+<p>To make that element available, assuming <a href="https://gstreamer.freedesktop.org/modules/gst-python.html">gst-python</a> is installed, the code
+above needs to be placed in a <code>python</code> directory, anywhere gstreamer will look
+for plugins (eg <code>GST_PLUGIN_PATH</code>):</p>
+<pre><code class="language-bash">$ ls python/
+srcelement.py
+$ GST_PLUGIN_PATH=$GST_PLUGIN_PATH:$PWD gst-inspect-1.0 audiotestsrc_py
+Factory Details:
+  Rank                     none (0)
+  Long-name                CustomSrc
+[...]
+</code></pre>
+<p>At the moment of writing, the master branches from both <a href="https://gitlab.gnome.org/GNOME/pygobject">pygobject</a>
+and <a href="https://cgit.freedesktop.org/gstreamer/gstreamer">gstreamer</a> need to be installed.</p>
+<p>Let's study some of the interesting parts now.</p>
+<h3 id="imports">Imports</h3>
+<pre><code class="language-python">from gi.repository import Gst, GLib, GObject, GstBase, GstAudio
+import numpy as np
+</code></pre>
+<p>Nothing unfamiliar here, assuming you've already done some pygobject
+programming, note that unlike an application that would usually initialize
+GStreamer here with a call to <code>Gst.init()</code>, we don't need to do that.</p>
+<p>We will use numpy to generate samples in a reasonably efficient manner,
+more on that below.</p>
+<h3 id="registration">Registration</h3>
+<p>Using gst-python, we implement new elements as python classes, which we
+need to register with GStreamer. The python plugin loader implemented
+by gst-python will import our module, and look for an attribute with
+the well-known name <code>__gstelementfactory__</code>.</p>
+<p>The value of this attribute should be a tuple consisting of a factory-name,
+a rank, and the class that implements the element.</p>
+<blockquote>
+<p>If the module needs to register multiple elements, it can do so by
+assigning a tuple of such tuples instead.</p>
+</blockquote>
+<pre><code class="language-python">__gstelementfactory__ = ("audiotestsrc_py", Gst.Rank.NONE, AudioTestSrc)
+</code></pre>
+<p>The class that we register is expected to hold a <code>__gstmetadata__</code> class
+attribute:</p>
+<pre><code class="language-python">class AudioTestSrc(GstBase.BaseSrc):
+    __gstmetadata__ = ('CustomSrc','Src', \
+                      'Custom test src element', 'Mathieu Duponchelle')
+</code></pre>
+<p>The contents of this tuple will be used to call
+<code>gst_element_class_set_metadata</code>, you'll find more information in
+its <a href="https://gstreamer.freedesktop.org/data/doc/gstreamer/head/gstreamer/html/GstElement.html#gst-element-class-set-metadata">documentation</a></p>
+<h3 id="inheritance">Inheritance</h3>
+<pre><code class="language-python">class AudioTestSrc(GstBase.BaseSrc):
+    # [...]
+    def __init__ (self):
+        GstBase.BaseSrc.__init__(self)
+</code></pre>
+<p>Our element will be a GStreamer source: it will not have any sink pads, and
+will output data on a single source pad.</p>
+<p>There is a base class in GStreamer for that type of elements,
+<a href="https://gstreamer.freedesktop.org/data/doc/gstreamer/head/gstreamer-libs/html/GstBaseSrc.html">GstBase.BaseSrc</a>. It handles state changes, supports live sources,
+push and pull-mode scheduling, and more.</p>
+<p>Inheritance is standard, the subclass needs to chain up in its <code>__init__</code>
+function if it implements it.</p>
+<p>Overriding virtual methods can be done by prefixing the name of the virtual
+method as declared in C with <code>do_</code>, more on that later.</p>
+<h3 id="initialization">Initialization</h3>
+<p>The <code>__init__</code> method should obviously only be called once over the lifetime
+of the element.</p>
+<p>This means we only need to initialize here those variables that will not
+need to be reinitialized when the element switches states. We only declare
+and (re)initialize other variables in the <code>do_start</code> virtual method
+implementation.</p>
+<p>Note that linters might complain when attributes are declared outside of
+the <code>__init__</code> function, as we do in the <code>do_start</code> virtual method, if you
+wish to strictly comply you will want to declare them in <code>__init__</code> as well,
+we didn't do so here for the sake of brevity.</p>
+<blockquote>
+<p>As our base class declares a <code>start</code> vmethod, we implement it by defining
+a <code>do_start</code> method in our class.</p>
+</blockquote>
+<h3 id="capabilities-negotiation">Capabilities, negotiation</h3>
+<p>In this example, we implement an element that will only output a single
+format:</p>
+<pre><code class="language-python">OCAPS = Gst.Caps.from_string (
+        'audio/x-raw, format=F32LE, layout=interleaved, rate=44100, channels=2')
+
+# [...]
+
+class AudioTestSrc(GstBase.BaseSrc):
+    # [...]
+
+    __gsttemplates__ = Gst.PadTemplate.new("src",
+                                           Gst.PadDirection.SRC,
+                                           Gst.PadPresence.ALWAYS,
+                                           OCAPS)
+</code></pre>
+<p><code>__gsttemplates__</code> is another well-known name that the python plugin loader
+will look up, it matches the arguments to
+<a href="https://gstreamer.freedesktop.org/data/doc/gstreamer/head/gstreamer/html/GstPadTemplate.html#gst-pad-template-new"><code>gst_pad_template_new</code></a>; here we declare that we will expose
+a single source pad named "src" that will output data in the format specified
+by <code>OCAPS</code>: 2 channels of interleaved float samples, at a rate of 44100 audio
+frames (so 88200 samples) a second.</p>
+<p>As that format is fixed, we won't have to concern ourselves with negotiation
+in that element, this will be automatically handled by our parent classes.</p>
+<pre><code class="language-python">    def do_set_caps(self, caps):
+        self.info.from_caps(caps)
+        self.set_blocksize (self.info.bpf * SAMPLESPERBUFFER)
+        return True
+</code></pre>
+<p>We technically could have done this directly in <code>__init__</code>, as we already know
+what the result of the negotiation will be, however if in the future we decided
+to make things more dynamic, for example by supporting multiple sample formats,
+the audio info would need to be initialized at the end of the negotiation
+process, as we do here.</p>
+<p>The next blog post in this series will present an element implementing dynamic
+negotiation, a good exercise for the reader could be to port this element to
+support a range of supported output channels, or a second sample format, eg
+32-bit integers.</p>
+<h3 id="processing">Processing</h3>
+<p>We chose to generate samples in our <code>do_create</code> implementation for no
+particular reason, the default implementation would call <code>do_alloc</code> then
+<code>do_fill</code>, we should only have to implement the latter if we wished to
+use that approach, as we have called <code>GstBase.BaseSrc.set_blocksize</code> in
+our <code>set_caps</code> implementation.</p>
+<p>I will not discuss the implementation details here, we generate an array
+of float samples forming a sine wave using numpy, and keep track of where
+the waveform was at in the <code>accumulator</code> attribute, this is all pretty simple
+stuff.</p>
+<p>We could of course generate the samples in a for loop, but performance would
+be abysmal.</p>
+<p>The interesting part here is that <code>GstBaseSrc</code> expects us to return a tuple
+made of <code>(Gst.FlowReturn.OK, output_buffer)</code> if everything went well,
+otherwise typically <code>(Gst.FlowReturn.ERROR, None)</code> if there was an issue
+generating the data.</p>
+<p>It is the responsability of the <code>create</code> vmethod implementation to .. create
+the output buffer, which is just what we do with
+<code>Gst.Buffer.new_wrapped (bytes(data))</code>.</p>
+<h3 id="properties">Properties</h3>
+<p>It is possible with pygobject to declare GObject properties with a decorator,
+however if one wants to specify minimum, maximum or default values, or
+provide some documentation, to be for example presented in the <code>gst-inspect</code>
+output, one needs to use a more verbose form:</p>
+<pre><code>class AudioTestSrc(GstBase.BaseSrc):
+    # [...]
+    __gproperties__ = {
+        "freq": (int,
+                 "Frequency",
+                 "Frequency of test signal",
+                 1,
+                 GLib.MAXINT,
+                 DEFAULT_FREQ,
+                 GObject.ParamFlags.READWRITE
+                ),
+        # [...]
+    }
+
+    # [...]
+
+    def do_get_property(self, prop):
+        if prop.name == 'freq':
+            return self.freq
+
+    [...]
+    def do_set_property(self, prop, value):
+        if prop.name == 'freq':
+            self.freq = value
+</code></pre>
+<p>Some interesting improvements here could be to declare the freq property as
+<a href="https://gstreamer.freedesktop.org/documentation/application-development/advanced/dparams.html">controllable</a>, or expose a property allowing to change the shape of the
+waveform (sine, square, triangle, ...)</p>
+<h3 id="liveness">Liveness</h3>
+<p>Three things are needed to output data in "live" mode:</p>
+<ul>
+<li>
+<p>Calling <code>GstBase.BaseSrc.set_live(True)</code></p>
+</li>
+<li>
+<p>Reporting the latency by handling the LATENCY query, which is what we do
+in <code>do_gst_base_src_query</code>. The attentive reader might have noticed that
+even though the <code>GstBaseSrc</code> virtual method is named <code>query</code>, we didn't
+implement it as <code>do_query</code>: that is because <code>GstElement</code> also exposes
+a virtual method with the same name, and we have to lift the ambiguity.
+Try implementing <code>do_query</code> and see what happens.</p>
+</li>
+<li>
+<p>Implementing <code>get_times</code> to let the base class know when it should actually
+push the buffer out.</p>
+</li>
+</ul>
+<p>Our element does all three things, and exposes a property named <code>is-live</code> to
+control that behaviour, you can verify it as follows:</p>
+<pre><code class="language-bash">GST_PLUGIN_PATH=$GST_PLUGIN_PATH:$PWD gst-launch-1.0 -v audiotestsrc_py ! \
+fakesink silent=false
+</code></pre>
+<p>as opposed to:</p>
+<pre><code class="language-bash">GST_PLUGIN_PATH=$GST_PLUGIN_PATH:$PWD gst-launch-1.0 -v audiotestsrc_py is-live=true ! \
+fakesink silent=false
+</code></pre>
+<h2 id="conclusion">Conclusion</h2>
+<p>We have implemented a simplified version of <code>audiotestsrc</code> here, the reader
+can update the code to support more features and familiarize themselves with
+the GstBaseSrc API, or alternatively try to implement a video test src.</p>
+<p>In the next post, we will present a GstBaseTransform implementation, that
+accepts audio as an input and outputs a plot generated with matplotlib. There
+will be dynamic negotiation, decoupling of the input and output, and more
+interesting things.</p>
+
+    </div>
+        
+
+
+        
+<hr>
+
+<div data-hotdoc-role="comments" data-github-issue-id="2" data-github-repo="MathieuDuponchelle/MathieuDuponchelle.github.io">
+</div>
+
+
+
+		
+	</div>
+	<div id="search_results">
+		<p>The results of the search are</p>
+	</div>
+	<hr>
+	<div id="footer">
+		    
+
+	</div>
+</div>
+
+<div id="toc-column">
+	
+		<div class="edit-button">
+		
+
+	</div>
+		<div id="toc-wrapper">
+		<nav id="toc"></nav>
+	</div>
+</div>
+</div>
+</main>
+
+</body>
+
+<script src="assets/js/navbar_offset_scroller.js"></script>
+</html>

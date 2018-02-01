@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<base href=".">
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+
+<title>Fun with videomixer</title>
+
+<link rel="stylesheet" href="assets/css/custom_bootstrap.css" type="text/css">
+<link rel="stylesheet" href="assets/css/bootstrap-toc.min.css" type="text/css">
+<link rel="stylesheet" href="assets/css/frontend.css" type="text/css">
+<link rel="stylesheet" href="assets/css/jquery.mCustomScrollbar.min.css">
+
+<link rel="stylesheet" href="assets/css/prism.css" type="text/css">
+
+<script src="assets/js/mustache.min.js"></script>
+<script src="assets/js/jquery.js"></script>
+<script src="assets/js/scrollspy.js"></script>
+<script src="assets/js/bootstrap.js"></script>
+<script src="assets/js/typeahead.jquery.min.js"></script>
+<script src="assets/js/search.js"></script>
+<script src="assets/js/isotope.pkgd.min.js"></script>
+<script src="assets/js/compare-versions.js"></script>
+<script src="assets/js/jquery.mCustomScrollbar.concat.min.js"></script>
+<script src="assets/js/bootstrap-toc.min.js"></script>
+<script src="assets/js/jquery.touchSwipe.min.js"></script>
+<script src="assets/js/anchor.min.js"></script>
+<script src="assets/js/tag_filtering.js"></script>
+<script src="assets/js/language_switching.js"></script>
+
+<script src="assets/js/lines_around_headings.js"></script>
+
+<script src="assets/js/prism-core.js"></script>
+<script src="assets/js/prism-autoloader.js"></script>
+<script src="assets/js/prism_autoloader_path_override.js"></script>
+<script src="assets/js/trie.js"></script>
+
+
+</head>
+
+<body class="no-script
+" data-spy="scroll" data-target="#toc" data-offset="70">
+
+<script>
+$('body').removeClass('no-script');
+</script>
+
+<nav class="navbar navbar-fixed-top navbar-default" id="topnav">
+	<div class="container-fluid">
+		<div class="navbar-right">
+			<a id="toc-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar-wrapper" aria-expanded="false">
+				<span class="sr-only">Toggle navigation</span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+			</button>
+			<form action="" class="navbar-form pull-right" id="navbar-search-form">
+                               <div class="form-group has-feedback">
+                                       <input type="text" class="form-control input-sm" name="search" id="sidenav-lookup-field" placeholder="search" disabled>
+				       <span class="glyphicon glyphicon-search form-control-feedback" id="search-mgn-glass"></span>
+                               </div>
+                        </form>
+		</div>
+		<div class="navbar-header">
+			<a id="sidenav-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<a id="home-link" href="index.html" class="hotdoc-navbar-brand">
+				<img src="assets/images/home.svg" alt="Home">
+			</a>
+		</div>
+		<div class="navbar-collapse collapse" id="navbar-wrapper">
+			<ul class="nav navbar-nav" id="menu">
+							</ul>
+			<div class="hidden-xs hidden-sm navbar-text navbar-center">
+							</div>
+		</div>
+	</div>
+</nav>
+
+<main>
+<div data-extension="core" data-hotdoc-in-toplevel="True" data-hotdoc-project="blog-1.0" data-hotdoc-ref="2013-06-08-Fun-with-videomixer.html" class="page_container" id="page-wrapper">
+<script src="assets/js/utils.js"></script>
+
+<div class="panel panel-collapse oc-collapsed" id="sidenav" data-hotdoc-role="navigation">
+	<script src="assets/js/navigation.js"></script>
+	<script src="assets/js/sitemap.js"></script>
+</div>
+
+<div id="body">
+	<div id="main">
+				    <div id="page-description" data-hotdoc-source="2013-06-08-Fun-with-videomixer.markdown" data-hotdoc-role="main">
+        <h1 id="introduction">Introduction</h1>
+<p>When you've spent the whole week painstakingly fixing bugs, coding something just for fun is a welcome breath of fresh air.
+These last weeks, one of my areas of work has been the gstreamer "videomixer" element. It needed some love, and still needs,
+but I've been able to fix some of the issues we had.
+When we first ported gstreamer-editing-services and gnonlin to gstreamer 1.0, even the most basic editing became impossible.
+That was quite frustrating to say the least, and being able to do edition once again feels extremely good !</p>
+<p>One of the great things with the extraction of pitivi's edition code to GES is that you can now write fancy scripts to make
+automated edition, and with a little luck you won't encounter a bug on your way.
+At the end of this article, you will find a video showing an example result.</p>
+<p>There haven't been much tutorials about using GES, the only way to learn that is either looking at the examples on the git repo,
+or to directly look at pitivi's source code.
+With that blogpost I'm gonna try to present that cool library, while coding something fun. The idea from the script came from
+that video : http://vimeo.com/35770492, linked to me by Nicolas Dufresne. We won't be able to reproduce the most advanced
+bits of this video, as it also seems to be content-aware at some points, but we will make a fun script nevertheless !</p>
+<h2 id="sounds-sweet-wheres-the-code-">Sounds sweet, where's the code ?</h2>
+<div>
+<script src="https://gist.github.com/MathieuDuponchelle/5736992.js"> </script>
+</div>
+<h2 id="looks-fine-explain-it-now-">Looks fine, explain it now !</h2>
+<p>I'll select the meaningful bits, assuming you know python well enough. If not, this is easily translatable to C,
+or any language that can take advantage of GObject introspection's dynamic bindings.</p>
+<p>First, let's look at the main.</p>
+<pre><code>    timeline = GES.Timeline.new_audio_video()
+</code></pre>
+<p>This convenience function will create a timeline with an audio and a video track for us.</p>
+<pre><code>    asset = GES.UriClipAsset.request_sync(sys.argv[1])
+    audio_asset = GES.UriClipAsset.request_sync(sys.argv[3])
+</code></pre>
+<p>This is part of the new API. Thanks to that, GES will only discover the file once, discovering meaning learning
+what streams are contained in the media, how long it lasts and other infos. Previously, we would discover
+the file each time we created an object with it, which was not optimized. request_sync is not what you would use
+in a GUI application, instead you would want to request_async, then take action in a callback.</p>
+<p>Now, let's look at createLayers, which is where the magic happens.</p>
+<pre><code>    layer = timeline.append_layer()
+</code></pre>
+<p>A timeline is a stack of layers, with ascending "priorities". Thanks to these layers, we are able for example
+to decide if a transition has to be created between two track objects, or, if two clips have an alpha of 1.0,
+which one will be the "topmost" one.</p>
+<pre><code>    clip = layer.add_asset(asset, i * Gst.SECOND * 0.3, 0, asset.get_duration(), GES.TrackType.UNKNOWN)
+</code></pre>
+<p>This code is very interesting. We are basically asking GES to : create a clip based on the asset we
+discovered earlier, set its start a i * 0.3 seconds, its inpoint (the place in the file from which it will
+be played) to 0, and its duration to the original duration of the file.
+The last argument means : for every kind of stream you find, add it if the timeline contains an
+appropriate track (here, audio and video).
+We could have decided to only keep the VIDEO, but that was a good occasion to show that.</p>
+<p>With that logic, we can now see that the resulting timeline is gonna be sort of a "canon":
+one video mixed with n earlier versions of itself.</p>
+<pre><code>    for source in clip.get_children():
+        if source.props.track_type == GES.TrackType.VIDEO:
+        break
+ 
+    source.set_child_property("alpha", alpha)
+    alpha = mylog(alpha)
+</code></pre>
+<p>Here, I browse the children of my timeline element, and when I find a video element, I set the
+alpha of an element inside it, and update the alpha. The log here makes it so each layer
+has the same perceived opacity at the end.</p>
+<p>Afterwards, we create a pipeline to play our timeline, and if needed we set it to the render mode,
+that code is quite self-explanatory.</p>
+<p>We now just have to wait until the EOS, or until the user interrupts the program.</p>
+<p>I use Gtk.main() out of pure laziness, a GLib mainloop would work as well.</p>
+<h2 id="how-does-it-look-like-then-">How does it look like then ?</h2>
+<p>I really hope this example made you want to learn more about GES, it's a great library that lets
+you do awesome stuff in very few lines of code, we're in active development and the best is still to come !</p>
+<p>Here is the promised video:</p>
+<iframe width="640" height="360" src="http://www.youtube.com/embed/grTxE6sFIJM?feature=player_detailpage" frameborder="0"> </iframe>
+<p>Notice the code was only tried with mp4 containing h264, feel free to report any issues with other codecs on my github !</p>
+
+    </div>
+        
+
+
+
+
+		
+	</div>
+	<div id="search_results">
+		<p>The results of the search are</p>
+	</div>
+	<hr>
+	<div id="footer">
+		    
+
+	</div>
+</div>
+
+<div id="toc-column">
+	
+		<div class="edit-button">
+		
+
+	</div>
+		<div id="toc-wrapper">
+		<nav id="toc"></nav>
+	</div>
+</div>
+</div>
+</main>
+
+</body>
+
+<script src="assets/js/navbar_offset_scroller.js"></script>
+</html>
