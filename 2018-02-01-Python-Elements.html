@@ -35,11 +35,11 @@
 
 <script src="assets/js/lines_around_headings.js"></script>
 
-<script src="assets/js/github-comment-loader.js"></script>
 <script src="assets/js/prism-core.js"></script>
 <script src="assets/js/prism-autoloader.js"></script>
 <script src="assets/js/prism_autoloader_path_override.js"></script>
 <script src="assets/js/trie.js"></script>
+<script src="assets/js/github-comment-loader.js"></script>
 
 
 </head>
@@ -313,6 +313,7 @@ class AudioTestSrc(GstBase.BaseSrc):
         self.next_sample = next_sample
         self.next_byte = next_byte
         self.accumulator += samples
+	self.accumulator %= self.info.rate / self.freq
 
         return (Gst.FlowReturn.OK, buf)
 
