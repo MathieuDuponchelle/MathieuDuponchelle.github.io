@@ -359,7 +359,7 @@ __gstelementfactory__ = ("audioplot", Gst.Rank.NONE, AudioPlotFilter)
 <h2 id="discussion">Discussion</h2>
 <p>At the moment of writing, the master branches from both <a href="https://gitlab.gnome.org/GNOME/pygobject">pygobject</a>
 and <a href="https://cgit.freedesktop.org/gstreamer/gstreamer">gstreamer</a> need to be installed.</p>
-<p>The python libraryies we will use for the purpose of plotting is <a href="https://matplotlib.org/">matplotlib</a>,
+<p>The python libraries we will use for the purpose of plotting are <a href="https://matplotlib.org/">matplotlib</a>
 and <a href="https://pypi.python.org/pypi/numpy_ringbuffer/0.2.0">numpy_ringbuffer</a> to help decoupling our input and output. Both are
 installable with <code>pip</code>:</p>
 <pre><code class="language-shell">python3 -m pip install matplotlib numpy_ringbuffer
@@ -457,7 +457,7 @@ different resolution.</p>
 <p>Consequently, when asked to transform the caps of the sink pad, we simply
 need to return the template of the source pad, potentially intersected
 with the optional <code>filter</code> argument (this parameter is useful for reducing
-complexity of the overall negotiation process).</p>
+the complexity of the overall negotiation process).</p>
 <p>An example of an element where input and output are interdependent
 is <a href="https://github.com/GStreamer/gst-plugins-good/blob/master/gst/videocrop/gstvideocrop.c#L631-L712">videocrop</a>.</p>
 <p>Implementing this virtual method is enough to make negotiation succeed
@@ -485,10 +485,10 @@ a virtual method to let the subclass pick a sane default value in such cases:</p
 <p>We do not have a preferred input format, and as a consequence we use the
 default <code>caps.fixate</code> implementation.</p>
 <p>However if for example the element is offered to output its full resolution range,
-we are going to try and pick the resolution closed to our preferred default,
+we are going to try and pick the resolution closest to our preferred default,
 this is what the calls to <code>fixate_field_nearest_int</code> achieve.</p>
 <p>This will have no effect if the field is already fixated to a specific value.</p>
-<p>If the field was set to a range not containing our preferred value, fixating
+<p>If the field was set to a range <em>not</em> containing our preferred value, fixating
 would result in picking the allowed value closest to it, for example given
 our preferred width <code>640</code> and the allowed range <code>[800, 1200]</code>, the final value
 of the field would be <code>800</code>:</p>
@@ -522,7 +522,7 @@ counters, a ringbuffer, etc ..</p>
                                                      None)
 </code></pre>
 <p>We initialize a converter based on our input format, as explained above this is
-best done in <code>do_set_caps</code>.</p>
+best done in <code>do_set_caps</code>:</p>
 <pre><code class="language-python">        _, info = inbuf.map(Gst.MapFlags.READ)
         res, data = self.converter.convert(GstAudio.AudioConverterFlags.NONE,
                                             info.data)
@@ -532,7 +532,7 @@ best done in <code>do_set_caps</code>.</p>
 that the endianness of the converted samples will be the native endianness of
 the platform the code runs on, which means that we can in turn cast our
 memoryview to <code>'i'</code> (memoryview.cast doesn't let its user select an endianness).</p>
-<p>The best alternative I'm aware of is possibly to use python's [struct] module
+<p>The best alternative I'm aware of is possibly to use python's <a href="https://docs.python.org/3/library/struct.html">struct</a> module
 in combination with the pack and unpack functions exposed on
 <a href="https://lazka.github.io/pgi-docs/GstAudio-1.0/classes/AudioFormatInfo.html">GstAudio.AudioFormatInfo</a>, however those are not yet available in the python
 bindings.</p>
@@ -540,16 +540,17 @@ bindings.</p>
 <p>The initial version of this element only implemented <code>do_transform</code>, and simply
 plotted one output buffer per input buffer. This produced a kaleidoscopic effect
 and slaved the framerate to <code>samplerate / samplesperbuffer</code>.</p>
-<p><code>BaseTransform</code> exposes a virtual method that allow producing 0 to N output
+<p><code>BaseTransform</code> exposes a virtual method that allows producing 0 to N output
 buffers per buffer instead, <code>do_generate_output</code>:</p>
 <pre><code class="language-python">    def do_generate_output(self):
         inbuf = self.queued_buf
 	# [...]
 </code></pre>
 <p>When a new buffer is chained on the sink pad, <code>do_generate_output</code> is called
-repeatedly while it returns <code>Gst.FlowReturn.OK</code> and a buffer: thanks to that
+repeatedly as long as it returns <code>Gst.FlowReturn.OK</code> and a buffer: thanks to that
 we can fill our ringbuffer and only return a frame once we have processed
-enough new samples to reach our next time.</p>
+enough new samples to reach our next time. Conversely we can produce multiple
+frames if the size of the input buffer warrants it.</p>
 <p>Here again, the rest of the function is made up of implementation details,
 an important point to note is that we still expose <code>do_transform</code>, as
 <code>BaseTransform</code> assumes otherwise that the element will operate in passthrough
