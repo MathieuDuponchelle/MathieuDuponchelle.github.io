@@ -115,9 +115,103 @@ With that blogpost I'm gonna try to present that cool library, while coding some
 that video : http://vimeo.com/35770492, linked to me by Nicolas Dufresne. We won't be able to reproduce the most advanced
 bits of this video, as it also seems to be content-aware at some points, but we will make a fun script nevertheless !</p>
 <h2 id="sounds-sweet-wheres-the-code-">Sounds sweet, where's the code ?</h2>
-<div>
-<script src="https://gist.github.com/MathieuDuponchelle/5736992.js"> </script>
-</div>
+<pre><code class="language-python">from gi.repository import GstPbutils
+from gi.repository import Gtk
+from gi.repository import Gst
+from gi.repository import GES
+from gi.repository import GObject
+
+import sys
+import signal
+
+def handle_sigint(sig, frame):
+    Gtk.main_quit()
+
+def busMessageCb(unused_bus, message):
+    if message.type == Gst.MessageType.EOS:
+        print "eos"
+        Gtk.main_quit()
+
+def duration_querier(pipeline):
+    print pipeline.query_position(Gst.Format.TIME)
+    return True
+
+def mylog(x):
+    return (x / (1 + x))
+
+def createLayers(timeline, asset):
+    step = 1.0 / int(sys.argv[2])
+    alpha = step
+    for i in range(int(sys.argv[2])):
+        layer = timeline.append_layer()
+        clip = layer.add_asset(asset, i * Gst.SECOND * 0.3, 0, asset.get_duration(), GES.TrackType.UNKNOWN)
+        for source in clip.get_children(False):
+            if source.props.track_type == GES.TrackType.VIDEO:
+                break
+
+        source.set_child_property("alpha", alpha)
+        alpha += step
+
+if __name__ =="__main__":
+    if len(sys.argv) &lt; 4:
+        print "usage : " + sys.argv[0] + " file:///video/uri number_of_layers file:///audio/uri [file:///output_uri]"
+        print "If you specify a output uri, the pipeline will get rendered"
+        exit(0)
+
+    GObject.threads_init()
+    Gst.init(None)
+    GES.init()
+
+    timeline = GES.Timeline.new_audio_video()
+
+    asset = GES.UriClipAsset.request_sync(sys.argv[1])
+    audio_asset = GES.UriClipAsset.request_sync(sys.argv[3])
+
+    createLayers(timeline, asset)
+
+    timeline.commit()
+
+    layer = timeline.append_layer()
+
+    layer.add_asset(audio_asset, 0, 0, timeline.get_duration(), GES.TrackType.AUDIO)
+
+    pipeline = GES.Pipeline()
+    pipeline.set_timeline(timeline)
+
+    container_profile = \
+        GstPbutils.EncodingContainerProfile.new("pitivi-profile",
+                                                "Pitivi encoding profile",
+                                                Gst.Caps("video/webm"),
+                                                None)
+
+    video_profile = GstPbutils.EncodingVideoProfile.new(Gst.Caps("video/x-vp8"),
+                                                        None,
+                                                        Gst.Caps("video/x-raw"),
+                                                        0)
+
+    container_profile.add_profile(video_profile)
+
+    audio_profile = GstPbutils.EncodingAudioProfile.new(Gst.Caps("audio/x-vorbis"),
+                                                        None,
+                                                        Gst.Caps("audio/x-raw"),
+                                                        0)
+
+    container_profile.add_profile(audio_profile)
+
+    if len(sys.argv) &gt; 4:
+        pipeline.set_render_settings(sys.argv[4], container_profile)
+        pipeline.set_mode(GES.PipelineFlags.RENDER)
+
+    pipeline.set_state(Gst.State.PLAYING)
+
+    bus = pipeline.get_bus()
+    bus.add_signal_watch()
+    bus.connect("message", busMessageCb)
+    GObject.timeout_add(300, duration_querier, pipeline)
+
+    signal.signal(signal.SIGINT, handle_sigint)
+    Gtk.main()
+</code></pre>
 <h2 id="looks-fine-explain-it-now-">Looks fine, explain it now !</h2>
 <p>I'll select the meaningful bits, assuming you know python well enough. If not, this is easily translatable to C,
 or any language that can take advantage of GObject introspection's dynamic bindings.</p>
