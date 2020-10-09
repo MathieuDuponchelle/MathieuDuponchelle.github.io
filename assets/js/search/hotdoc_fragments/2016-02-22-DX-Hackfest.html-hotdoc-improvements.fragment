@@ -1,1 +1,1 @@
-fragment_downloaded_cb({"url": "2016-02-22-DX-Hackfest.html#hotdoc-improvements", "fragment": "Hotdoc improvements \n"});
+fragment_downloaded_cb({"url":"2016-02-22-DX-Hackfest.html#hotdoc-improvements","fragment":"Hotdoc improvements\nI helped Frédéric with testing porting gtk from gtk-doc to hotdoc, and landed a patch from him in hotdoc-gi-extension, the resulting documentation seemed overall correct.\nI worked with Thibault Saunier to implement a smart include feature in hotdoc.\n"});

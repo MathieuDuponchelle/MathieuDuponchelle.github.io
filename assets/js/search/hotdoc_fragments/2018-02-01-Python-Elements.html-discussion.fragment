@@ -1,1 +1,1 @@
-fragment_downloaded_cb({"url": "2018-02-01-Python-Elements.html#discussion", "fragment": "Discussion \n"});
+fragment_downloaded_cb({"url":"2018-02-01-Python-Elements.html#discussion","fragment":"Discussion\nTo make that element available, assuming gst-python is installed, the code\nabove needs to be placed in a python directory, anywhere gstreamer will look\nfor plugins (eg GST_PLUGIN_PATH):\nAt the moment of writing, the master branches from both pygobject\nand gstreamer need to be installed.\nLet's study some of the interesting parts now.\n"});

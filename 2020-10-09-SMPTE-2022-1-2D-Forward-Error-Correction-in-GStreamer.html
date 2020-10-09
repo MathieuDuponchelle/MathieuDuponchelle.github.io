@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<base href=".">
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+
+<title>SMPTE 2022-1 2D Forward Error Correction in GStreamer</title>
+
+<link rel="stylesheet" href="assets/css/custom_bootstrap.css" type="text/css">
+<link rel="stylesheet" href="assets/css/bootstrap-toc.min.css" type="text/css">
+<link rel="stylesheet" href="assets/css/frontend.css" type="text/css">
+<link rel="stylesheet" href="assets/css/jquery.mCustomScrollbar.min.css">
+<link rel="stylesheet" href="assets/js/search/enable_search.css" type="text/css">
+
+<link rel="stylesheet" href="assets/css/prism-tomorrow.css" type="text/css">
+
+<script src="assets/js/mustache.min.js"></script>
+<script src="assets/js/jquery.js"></script>
+<script src="assets/js/scrollspy.js"></script>
+<script src="assets/js/bootstrap.js"></script>
+<script src="assets/js/typeahead.jquery.min.js"></script>
+<script src="assets/js/search.js"></script>
+<script src="assets/js/compare-versions.js"></script>
+<script src="assets/js/jquery.mCustomScrollbar.concat.min.js"></script>
+<script src="assets/js/bootstrap-toc.min.js"></script>
+<script src="assets/js/jquery.touchSwipe.min.js"></script>
+<script src="assets/js/anchor.min.js"></script>
+<script src="assets/js/tag_filtering.js"></script>
+<script src="assets/js/language_switching.js"></script>
+
+<script src="assets/js/lines_around_headings.js"></script>
+
+<script src="assets/js/prism-core.js"></script>
+<script src="assets/js/prism-autoloader.js"></script>
+<script src="assets/js/prism_autoloader_path_override.js"></script>
+<script src="assets/js/github-comment-loader.js"></script>
+<script src="assets/js/trie.js"></script>
+
+
+</head>
+
+<body class="no-script
+" data-spy="scroll" data-target="#toc" data-offset="70">
+
+<script>
+$('body').removeClass('no-script');
+</script>
+
+<nav class="navbar navbar-fixed-top navbar-default" id="topnav">
+	<div class="container-fluid">
+		<div class="navbar-right">
+			<a id="toc-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar-wrapper" aria-expanded="false">
+				<span class="sr-only">Toggle navigation</span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+			</button>
+			<form class="navbar-form pull-right" id="navbar-search-form">
+                               <div class="form-group has-feedback">
+                                       <input type="text" class="form-control input-sm" name="search" id="sidenav-lookup-field" placeholder="search" disabled>
+				       <span class="glyphicon glyphicon-search form-control-feedback" id="search-mgn-glass"></span>
+                               </div>
+                        </form>
+		</div>
+		<div class="navbar-header">
+			<a id="sidenav-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<a id="home-link" href="index.html" class="hotdoc-navbar-brand">
+				<img src="assets/images/home.svg" alt="Home">
+			</a>
+		</div>
+		<div class="navbar-collapse collapse" id="navbar-wrapper">
+			<ul class="nav navbar-nav" id="menu">
+							</ul>
+			<div class="hidden-xs hidden-sm navbar-text navbar-center">
+							</div>
+		</div>
+	</div>
+</nav>
+
+<main>
+<div data-extension="core" data-hotdoc-in-toplevel="True" data-hotdoc-project="blog" data-hotdoc-ref="2020-10-09-SMPTE-2022-1-2D-Forward-Error-Correction-in-GStreamer.html" class="page_container" id="page-wrapper">
+<script src="assets/js/utils.js"></script>
+
+<div class="panel panel-collapse oc-collapsed" id="sidenav" data-hotdoc-role="navigation">
+	<script src="assets/js/navigation.js"></script>
+	<script src="assets/js/sitemap.js"></script>
+</div>
+
+<div id="body">
+	<div id="main">
+				    <div id="page-description" data-hotdoc-role="main">
+        <h1 id="smpte-20221-2d-forward-error-correction-in-gstreamer">SMPTE 2022-1 2D Forward Error Correction in GStreamer</h1>
+<p>Various mechanisms have been devised over the years for recovering from packet
+loss when transporting data with RTP over UDP. One such mechanism was
+standardized in SMPTE 2022-1, and I recently implemented support for it in
+<a href="https://gstreamer.freedesktop.org/">GStreamer</a>.</p>
+<p>TL;DR:</p>
+<pre><code class="language-shell">gst-launch-1.0 \
+  rtpbin name=rtp fec-encoders='fec,0="rtpst2022-1-fecenc\ rows\=5\ columns\=5";' \
+  uridecodebin uri=file:///path/to/video/file ! x264enc key-int-max=60 tune=zerolatency ! \
+    queue ! mpegtsmux ! rtpmp2tpay ssrc=0 ! rtp.send_rtp_sink_0 \
+  rtp.send_rtp_src_0 ! udpsink host=127.0.0.1 port=5000 \
+  rtp.send_fec_src_0_0 ! udpsink host=127.0.0.1 port=5002 async=false \
+  rtp.send_fec_src_0_1 ! udpsink host=127.0.0.1 port=5004 async=false
+</code></pre>
+<pre><code class="language-shell">gst-launch-1.0 \
+  rtpbin latency=500 fec-decoders='fec,0="rtpst2022-1-fecdec\ size-time\=1000000000";' name=rtp \
+  udpsrc address=127.0.0.1 port=5002 caps="application/x-rtp, payload=96" ! queue ! rtp.recv_fec_sink_0_0 \
+  udpsrc address=127.0.0.1 port=5004 caps="application/x-rtp, payload=96" ! queue ! rtp.recv_fec_sink_0_1 \
+  udpsrc address=127.0.0.1 port=5000 caps="application/x-rtp, media=video, clock-rate=90000, encoding-name=mp2t, payload=33" ! \
+    queue ! netsim drop-probability=0.05 ! rtp.recv_rtp_sink_0 \
+  rtp. ! decodebin ! videoconvert ! queue ! autovideosink
+</code></pre>
+<h2 id="specification">Specification</h2>
+<h3 id="smpte-2022">SMPTE 2022</h3>
+<p>From Wikipedia:</p>
+<blockquote>
+<p><a href="https://en.wikipedia.org/wiki/SMPTE_2022">SMPTE 2022</a> is a standard from the Society of Motion Picture and Television
+Engineers (SMPTE) that describes how to send digital video over an IP
+network. Video formats supported include MPEG-2 and serial digital interface.
+The standard was introduced in 2007 and has been expanded in the years since.</p>
+</blockquote>
+<p>The work presented in this post is the implementation of the first part of that
+standard, 2022-1. 2022-5 is another notable part dealing with Forward Error
+Correction for very high bitrate RTP streams.</p>
+<h3 id="xor">XOR</h3>
+<p>The core mechanism at the heart of SMPTE 2022-1 and other FEC mechanisms is
+usage of <a href="https://en.wikipedia.org/wiki/Exclusive_or">XOR</a> (<code>^</code>). Given a set of N values, it is possible to recover any
+of the values provided all the other values and the result of their xoring
+together have been received.</p>
+<p>It is logically equivalent and probably easier to think of to retrieving
+the missing value when the sum of all the values has been received, for
+example given 3 values 1, 2 and X, and their sum 6, we can see that X must
+be:</p>
+<pre><code>X = 6 - 2 - 1
+X = 3
+</code></pre>
+<p>Usage of XOR is a neat trick that makes for a more computer-friendly mechanism:
+while an addition-based mechanism would require 9-bit to protect two 8-bit
+values, 10-bit to protect 4, etc., the required size with XOR remains a constant
+8-bit.</p>
+<p>An RTP payload is just a collection of 8-bit values, so it follows that the
+payload of FEC packets protecting N RTP packets consists of an equivalent
+amount of 8-bit values.</p>
+<p>Other fields of the standard RTP header are protected similarly, such as
+the payload type or the timestamp, and the payload length of the media
+packets as well, allowing the mechanism to be applied to media packets
+of varying lengths.</p>
+<h3 id="enter-the-2d-matrix">Enter the (2D) matrix</h3>
+<p>A straightforward application of the mechanism presented above is to simply
+construct and transmit a FEC packet for each set of N consecutive media
+packets.</p>
+<p>This works well enough when packet loss is truly random, but a common
+pattern of packet loss over UDP is burstiness, where packets may be
+transmitted without loss for some time, then suddenly a few consecutive packets
+go missing. It means that our mechanism will often fall short in such cases,
+as it relies on having at most one packet missing from a sequence of values.</p>
+<p>A neat sophistication introduced in this standard and adopted in 2022-5
+and <a href="https://tools.ietf.org/html/draft-ietf-payload-flexible-fec-scheme-20">flexfec</a> is to think of packet sequences with an extra dimension,
+going from a linear approach:</p>
+<pre><code>M1 M2 M3 RF1 M4 M5 M6 RF2 ...
+</code></pre>
+<p>to a two-dimensional approach:</p>
+<pre><code>+--------------+
+| M1 | M2 | M3 | RF1
+| M4 | M5 | M6 | RF2
+| M7 | M8 | M9 | RF3
++--------------+
+ CF1  CF2  CF3
+</code></pre>
+<p>Where M are the protected media packets, RF are the "row" FEC packets,
+applied to consecutive packets, and CF are the "column" FEC packets, applied
+to sets of packets separated by a fixed interval, in the example above 3.</p>
+<p>Let's imagine some scenarios to see how this approach addresses bursty
+loss patterns:</p>
+<p>If M2 and M9 are lost:</p>
+<pre><code>+--------------+
+| M1 | X  | M3 | RF1
+| M4 | M5 | M6 | RF2
+| M7 | M8 | X  | RF3
++--------------+
+ CF1  CF2  CF3
+</code></pre>
+<p>They can both be recovered thanks to row FEC (RF1, RF3), but if M2 and M3 are
+lost in a burst, row FEC is now useless:</p>
+<pre><code>+--------------+
+| M1 | X  | X  | RF1
+| M4 | M5 | M6 | RF2
+| M7 | M8 | M9 | RF3
++--------------+
+ CF1  CF2  CF3
+</code></pre>
+<p>That is where column FEC comes in handy, as M2 and M3 can still be recovered
+thanks to CF2 and CF3.</p>
+<p>An interesting property of this scheme is that each dimension can
+complete the other:</p>
+<pre><code>+--------------+
+| M1 | M2 | X  | X
+| M4 | M5 | X  | RF2
+| M7 | X  | X  | RF3
++--------------+
+ CF1  CF2  CF3
+</code></pre>
+<p>It appears that we have some heavy packet loss, and that some packets may
+simply not be recovered, for example M3 has its row FEC packet missing, and none
+of the media packets in its column have made it.</p>
+<p>However all hope is not lost:</p>
+<p>We first recover M8 thanks to column FEC, which means we can now recover
+M9 with row FEC. M6 is also recoverable with row FEC: M3 can now be recovered
+through column FEC! That's pretty neat.</p>
+<p>As with many other "vague" problems, there isn't necessarily a perfect dimension
+for the matrix, it has to be determined empirically through trial and error,
+and potentially adapted depending on the particular network that data will be
+transported across.</p>
+<p>For reference, AWS MediaConnect uses a 10 by 10 matrix, and in my testing with
+the <a href="https://gstreamer.freedesktop.org/documentation/netsim/index.html">netsim</a> element, a 5 by 5 matrix worked well to address a 5 percent packet
+loss. <code>netsim</code> isn't however a faithful representation of a typical unreliable
+network, as when using its <code>drop-probability</code> property packets will be randomly
+dropped.</p>
+<h3 id="repair-window">Repair window</h3>
+<p>As the intention behind column FEC is to recover from loss bursts, it would
+be counter-productive to send those FEC packets at the same time as the media
+packets they protect. SMPTE 2022-1 addresses this by specifying how to delay
+these packets, this is known in latter specs as the "Repair window".</p>
+<h3 id="limitations">Limitations</h3>
+<p>SMPTE 2022-1 requires FEC packets to have their SSRC field to zero, this
+makes multiplexing of multiple FEC streams impossible. As a consequence,
+it is often used with an MPEG-TS container, but nothing prevents from using
+it with other types of payload. SMPTE 2022-1 also prohibits usage of CSRC
+entries.</p>
+<p>The maximum size of the 2D FEC matrix is limited to 255 by 255. This is of
+course more than sufficient for compressed formats, but too limiting for
+raw formats. SMPTE 2022-5 addresses this by turning the row and column fields
+into 10-bit values, making it suitable for usage with very high bandwidth
+formats (&gt; 3 Gbps).</p>
+<h2 id="implementation">Implementation</h2>
+<h3 id="positioning-in-rtpbin">Positioning in rtpbin</h3>
+<p>The decoder element is positioned upstream of <a href="https://gstreamer.freedesktop.org/documentation/rtpmanager/rtpjitterbuffer.html">rtpjitterbuffer</a> in GStreamer's
+<a href="https://gstreamer.freedesktop.org/documentation/rtpmanager/rtpbin.html">rtpbin</a>. It exposes one always sinkpad for receiving media packets, and up to
+two request sink pads for receiving FEC packets.</p>
+<p><img src="fec-pipeline.svg" alt=""></p>
+<p>All incoming packets are stored for the duration of a configurable repair
+window (<code>size-time</code> property).</p>
+<p>My initial approach was to perform recovery upon retransmission requests
+emitted by <code>rtpjitterbuffer</code>, but this approach had multiple drawbacks:</p>
+<ul>
+<li>
+<p><code>do-retransmission</code> had to be set on the jitterbuffer, which would have
+been confusing when retransmission was not actually required.</p>
+</li>
+<li>
+<p><code>rtpjitterbuffer</code> will emit retransmission requests pretty agressively,
+and potentially multiple times for the same packet. This would have
+caused unnecessary processing in the decoder.</p>
+</li>
+</ul>
+<p>Instead, the approach I picked was to proactively reconstruct missing
+packets as soon as possible. When a FEC packet arrives, we immediately check
+whether a media packet in the row / column it protects can be reconstructed.</p>
+<p>Similarly, when a media packet comes in, we check whether we've already
+received a corresponding packet in both the column and row it belongs to,
+and if so go through the first step listed above.</p>
+<p>This process is repeated recursively, allowing for recoveries over one
+dimension to unblock recoveries over the other.</p>
+<p>The encoder exposes one sink pad, one always source pad, and two sometimes
+source pads for pushing FEC packets. It is placed near the tail of rtpbin.</p>
+<h3 id="configuration-options">Configuration options</h3>
+<p>The only property exposed by the decoder is, as mentioned above, the
+duration for which to store packets, which should be at least as long
+as the repair window.</p>
+<p>The encoder on the other hand is a bit more configurable, with properties
+to set the size of the repair matrix that cannot be changed while <code>PLAYING</code>,
+and properties to selectively disable row or column FEC while <code>PLAYING</code>,
+allowing applications to adapt their packet loss / bandwidth usage strategy
+dynamically, based on evolving network conditions.</p>
+<p>Finally, properties have been added in rtpbin to allow specifying a
+per-session element factory for sending and receiving FEC from the command
+line. These come as a complement to the already existing signals, which
+are still used as a fallback.</p>
+<h2 id="usage">Usage</h2>
+<p>The following pipelines put all this work together, with a sender side
+that can be started with:</p>
+<pre><code class="language-shell">gst-launch-1.0 \
+  rtpbin name=rtp fec-encoders='fec,0="rtpst2022-1-fecenc\ rows\=5\ columns\=5";' \
+  uridecodebin uri=file:///path/to/video/file ! x264enc key-int-max=60 tune=zerolatency ! \
+    queue ! mpegtsmux ! rtpmp2tpay ssrc=0 ! rtp.send_rtp_sink_0 \
+  rtp.send_rtp_src_0 ! udpsink host=127.0.0.1 port=5000 \
+  rtp.send_fec_src_0_0 ! udpsink host=127.0.0.1 port=5002 async=false \
+  rtp.send_fec_src_0_1 ! udpsink host=127.0.0.1 port=5004 async=false
+</code></pre>
+<p>and a receiver side with:</p>
+<pre><code class="language-shell">gst-launch-1.0 \
+  rtpbin latency=500 fec-decoders='fec,0="rtpst2022-1-fecdec\ size-time\=1000000000";' name=rtp \
+  udpsrc address=127.0.0.1 port=5002 caps="application/x-rtp, payload=96" ! queue ! rtp.recv_fec_sink_0_0 \
+  udpsrc address=127.0.0.1 port=5004 caps="application/x-rtp, payload=96" ! queue ! rtp.recv_fec_sink_0_1 \
+  udpsrc address=127.0.0.1 port=5000 caps="application/x-rtp, media=video, clock-rate=90000, encoding-name=mp2t, payload=33" ! \
+    queue ! netsim drop-probability=0.05 ! rtp.recv_rtp_sink_0 \
+  rtp. ! decodebin ! videoconvert ! queue ! autovideosink
+</code></pre>
+<h2 id="future-prospects">Future prospects</h2>
+<h3 id="more-fec">More FEC!</h3>
+<p>Algorithmically-speaking, SMPTE 2022-1 is similar to flexfec. While it is
+based on <a href="https://tools.ietf.org/html/rfc2733">RFC 2733</a>, flexfec is based on <a href="https://tools.ietf.org/html/rfc5109">RFC 5109</a> and lifts some of the
+constraints I listed earlier. Flexfec is not yet a final RFC, but it can
+already be used as a webRTC protection mechanism with Google Chrome, and
+should eventually obsolete ulpfec.</p>
+<p>If you are interested in building upon my work to implement flexfec or
+SMPTE 2022-5 support in GStreamer, or are willing to sponsor me for doing so,
+don't hesitate to shoot me a mail at <a href="mailto:mathieu@centricular.com">mathieu@centricular.com</a>!</p>
+<h3 id="networkaware-heuristics">Network-aware heuristics</h3>
+<p>Adapting configuration and usage of the various packet loss recovery / mitigation
+mechanisms is a hard problem in and of itself, and GStreamer currently leaves this
+as an exercise to the reader. We are gathering all the pieces of the puzzle however:</p>
+<ul>
+<li>
+<p>Retransmission has been supported for quite some time already
+(courtesy of Julien Isorce, then working at Collabora)</p>
+</li>
+<li>
+<p>Support for <a href="https://gitlab.freedesktop.org/gstreamer/gst-plugins-good/-/merge_requests/377">Transport Wide Congestion Control</a> has been merged recently
+(courtesy of Havard Graff at Pexip)</p>
+</li>
+<li>
+<p>Various mechanisms are available for Forward Error Correction</p>
+</li>
+<li>
+<p><code>rtpbin</code> collects all sorts of statistics giving us a clear picture
+of current network conditions</p>
+</li>
+<li>
+<p>Many of our encoders support dynamically changing their bitrate</p>
+</li>
+</ul>
+<p>Designing and implementing a solution for tying all these features together would
+be a very interesting undertaking, and make for a more enjoyable out-of-the-box
+RTP experience.</p>
+<p>I hope this was instructive, curious about comments / corrections (I don't give
+hexadecimal dollars, I'd get bankrupt real quick).</p>
+
+    </div>
+        
+
+
+        
+<hr>
+
+<div data-hotdoc-role="comments" data-github-issue-id="4" data-github-repo="MathieuDuponchelle/MathieuDuponchelle.github.io">
+</div>
+
+
+
+		
+	</div>
+	<div id="search_results">
+		<p>The results of the search are</p>
+	</div>
+	<div id="footer">
+		    
+
+	</div>
+</div>
+
+<div id="toc-column">
+	
+		<div class="edit-button">
+		
+
+	</div>
+		<div id="toc-wrapper">
+		<nav id="toc"></nav>
+	</div>
+</div>
+</div>
+</main>
+
+
+<script src="assets/js/navbar_offset_scroller.js"></script>
+</body>
+</html>

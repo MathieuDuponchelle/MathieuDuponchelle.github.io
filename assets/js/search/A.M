@@ -1,1 +1,1 @@
-urls_downloaded_cb({"token": "A.M", "urls": [{"url": "2016-05-26-GST-Hackfest.html#page-description", "context": {"gi-language": ["default"]}}]});
+urls_downloaded_cb({"token":"A.M","urls":[{"url":"2016-05-26-GST-Hackfest.html#getting-there","node_type":"p","context":{"gi-language":["default"]}}]});

@@ -1,1 +1,1 @@
-fragment_downloaded_cb({"url": "2018-02-01-Python-Elements.html#imports", "fragment": "Imports \n"});
+fragment_downloaded_cb({"url":"2018-02-01-Python-Elements.html#imports","fragment":"Imports\nNothing unfamiliar here, assuming you've already done some pygobject\nprogramming, note that unlike an application that would usually initialize\nGStreamer here with a call to Gst.init(), we don't need to do that.\nWe will use numpy to generate samples in a reasonably efficient manner,\nmore on that below.\n"});

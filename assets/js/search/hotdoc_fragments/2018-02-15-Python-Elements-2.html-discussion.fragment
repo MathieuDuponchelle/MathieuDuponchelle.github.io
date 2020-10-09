@@ -1,1 +1,1 @@
-fragment_downloaded_cb({"url": "2018-02-15-Python-Elements-2.html#discussion", "fragment": "Discussion \n"});
+fragment_downloaded_cb({"url":"2018-02-15-Python-Elements-2.html#discussion","fragment":"Discussion\nAt the moment of writing, the master branches from both pygobject\nand gstreamer need to be installed.\nThe python libraries we will use for the purpose of plotting are matplotlib\nand numpy_ringbuffer to help decoupling our input and output. Both are\ninstallable with pip:\nYou can test the element as follows:\n"});

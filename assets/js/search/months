@@ -1,1 +1,1 @@
-urls_downloaded_cb({"token": "months", "urls": [{"url": "2014-01-20-Announcing-Fundraising-Campaign.html#page-description", "context": {"gi-language": ["default"]}}]});
+urls_downloaded_cb({"token":"months","urls":[{"url":"2014-01-20-Announcing-Fundraising-Campaign.html#our-project","node_type":"p","context":{"gi-language":["default"]}},{"url":"2014-01-20-Announcing-Fundraising-Campaign.html#our-team","node_type":"p","context":{"gi-language":["default"]}}]});

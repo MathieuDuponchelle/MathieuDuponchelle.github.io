@@ -1,1 +1,1 @@
-fragment_downloaded_cb({"url": "2016-05-26-GST-Hackfest.html#conclusion", "fragment": "Conclusion \n"});
+fragment_downloaded_cb({"url":"2016-05-26-GST-Hackfest.html#conclusion","fragment":"Conclusion\nI'm afraid I don't have much to report on the GStreamer side of the GStreamer hackfest, hopefully others will fill that gap, I'll update this page\nwith links to other people's posts.\n\nSebastian wrote about writing gstreamer elements in rust\n\n\n"});

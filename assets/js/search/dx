@@ -1,1 +1,1 @@
-urls_downloaded_cb({"token": "dx", "urls": [{"url": "2016-02-22-DX-Hackfest.html#back-from-the-dx-hackfest", "context": {"gi-language": ["default"]}}]});
+urls_downloaded_cb({"token":"dx","urls":[{"url":"2016-02-22-DX-Hackfest.html#back-from-the-dx-hackfest","node_type":"h2","context":{"gi-language":["default"]}},{"url":"index.html#subpages","node_type":"p","context":{"gi-language":["default"]}}]});
