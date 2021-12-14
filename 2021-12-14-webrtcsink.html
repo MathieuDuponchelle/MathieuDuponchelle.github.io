@@ -102,6 +102,8 @@ $('body').removeClass('no-script');
 	<div id="main">
 				    <div id="page-description" data-hotdoc-role="main">
         <h1 id="webrtcsink-a-new-gstreamer-element-for-webrtc-streaming">webrtcsink, a new GStreamer element for WebRTC streaming</h1>
+<p><code>webrtcsink</code> is an all-batteries included GStreamer WebRTC producer, that tries
+its best to do The Right Thing™.</p>
 <p>Following up on the last part of my <a href="2020-10-09-SMPTE-2022-1-2D-Forward-Error-Correction-in-GStreamer.html">last blog post</a>, I have spent some time
 these past few months working on a <a href="https://github.com/centricular/webrtcsink">WebRTC sink element</a> to make use of the
 various mitigation techniques and congestion control mechanisms currently
@@ -136,7 +138,7 @@ the job, I have plans for improving this, see <a href="2021-12-14-webrtcsink.htm
 RTP extension in order to modulate the target bitrate produced by the video encoders
 when congestion is detected on the network.</p>
 <p>The heuristic I implemented is a hybrid of a Proof-of-Concept Matthew Waters
-[implemented] recently and the [Google Congestion Control algorithm].</p>
+<a href="https://gitlab.freedesktop.org/ystreet/gst-examples/-/commits/bw-management">implemented</a> recently and the <a href="https://datatracker.ietf.org/doc/html/draft-ietf-rmcat-gcc-02">Google Congestion Control algorithm</a>.</p>
 <p>As far as my synthetic testing has gone, it works decently and is fairly
 reactive, it will however certainly evolve in the future as more real-life
 testing happens, more on that later.</p>
