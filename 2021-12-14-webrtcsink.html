@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<base href=".">
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+
+<title>webrtcsink</title>
+
+<link rel="stylesheet" href="assets/css/custom_bootstrap.css" type="text/css">
+<link rel="stylesheet" href="assets/css/bootstrap-toc.min.css" type="text/css">
+<link rel="stylesheet" href="assets/css/frontend.css" type="text/css">
+<link rel="stylesheet" href="assets/css/jquery.mCustomScrollbar.min.css">
+<link rel="stylesheet" href="assets/js/search/enable_search.css" type="text/css">
+
+<link rel="stylesheet" href="assets/css/prism-tomorrow.css" type="text/css">
+
+<script src="assets/js/mustache.min.js"></script>
+<script src="assets/js/jquery.js"></script>
+<script src="assets/js/bootstrap.js"></script>
+<script src="assets/js/scrollspy.js"></script>
+<script src="assets/js/typeahead.jquery.min.js"></script>
+<script src="assets/js/search.js"></script>
+<script src="assets/js/compare-versions.js"></script>
+<script src="assets/js/jquery.mCustomScrollbar.concat.min.js"></script>
+<script src="assets/js/bootstrap-toc.min.js"></script>
+<script src="assets/js/jquery.touchSwipe.min.js"></script>
+<script src="assets/js/anchor.min.js"></script>
+<script src="assets/js/tag_filtering.js"></script>
+<script src="assets/js/language_switching.js"></script>
+
+<script src="assets/js/lines_around_headings.js"></script>
+
+<script src="assets/js/prism-core.js"></script>
+<script src="assets/js/prism-autoloader.js"></script>
+<script src="assets/js/prism_autoloader_path_override.js"></script>
+<script src="assets/js/trie.js"></script>
+<script src="assets/js/github-comment-loader.js"></script>
+
+
+</head>
+
+<body class="no-script
+">
+
+<script>
+$('body').removeClass('no-script');
+</script>
+
+<nav class="navbar navbar-fixed-top navbar-default" id="topnav">
+	<div class="container-fluid">
+		<div class="navbar-right">
+			<a id="toc-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar-wrapper" aria-expanded="false">
+				<span class="sr-only">Toggle navigation</span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+			</button>
+			<form class="navbar-form pull-right" id="navbar-search-form">
+                               <div class="form-group has-feedback">
+                                       <input type="text" class="form-control input-sm" name="search" id="sidenav-lookup-field" placeholder="search" disabled>
+				       <span class="glyphicon glyphicon-search form-control-feedback" id="search-mgn-glass"></span>
+                               </div>
+                        </form>
+		</div>
+		<div class="navbar-header">
+			<a id="sidenav-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<a id="home-link" href="index.html" class="hotdoc-navbar-brand">
+				<img src="assets/images/home.svg" alt="Home">
+			</a>
+		</div>
+		<div class="navbar-collapse collapse" id="navbar-wrapper">
+			<ul class="nav navbar-nav" id="menu">
+							</ul>
+			<div class="hidden-xs hidden-sm navbar-text navbar-center">
+							</div>
+		</div>
+	</div>
+</nav>
+
+<main>
+<div data-extension="core" data-hotdoc-in-toplevel="True" data-hotdoc-project="blog" data-hotdoc-ref="2021-12-14-webrtcsink.html" class="page_container" id="page-wrapper">
+<script src="assets/js/utils.js"></script>
+
+<div class="panel panel-collapse oc-collapsed" id="sidenav" data-hotdoc-role="navigation">
+	<script src="assets/js/navigation.js"></script>
+	<script src="assets/js/sitemap.js"></script>
+</div>
+
+<div id="body">
+	<div id="main">
+				    <div id="page-description" data-hotdoc-role="main">
+        <h1 id="webrtcsink-a-new-gstreamer-element-for-webrtc-streaming">webrtcsink, a new GStreamer element for WebRTC streaming</h1>
+<p>Following up on the last part of my <a href="2020-10-09-SMPTE-2022-1-2D-Forward-Error-Correction-in-GStreamer.html">last blog post</a>, I have spent some time
+these past few months working on a <a href="https://github.com/centricular/webrtcsink">WebRTC sink element</a> to make use of the
+various mitigation techniques and congestion control mechanisms currently
+available in <a href="https://gstreamer.freedesktop.org/">GStreamer</a>.</p>
+<p>This post will briefly present the implementation choices I made, the current
+features and my ideas for future improvements, with a short demo at the end.</p>
+<p>Note that <code>webrtcsink</code> requires latest GStreamer main at the time of writing,
+all required patches will be part of the 1.20 release.</p>
+<h2 id="the-element">The element</h2>
+<p>The choice I made here was to make this element a simple sink: while it wraps
+<a href="https://gstreamer.freedesktop.org/documentation/webrtc/index.html">webrtcbin</a>, which supports both sending and receiving media streams, webrtcsink
+will only offer sendonly streams to its consumers.</p>
+<p>The element, unlike <code>webrtcbin</code>, only accepts raw audio and video streams, and
+takes care of the encoding and payloading itself.</p>
+<p>Properties are exposed to let the application control what codecs are offered
+to consumers (and in what order), for instance <code>video-caps=video/x-vp9;video/x-vp8</code>,
+and the choice of the actual encoders can be controlled through the GStreamer
+feature rank mechanism.</p>
+<p>This decision means that <code>webrtcsink</code> has direct control over the encoders,
+in particular it can update their target bitrate according to network conditions,
+more on that <a href="2021-12-14-webrtcsink.html#congestion-control">later</a>.</p>
+<h2 id="signalling">Signalling</h2>
+<p>Applications that use <code>webrtcsink</code> can implement their own signalling mechanism,
+by implementing a <a href="https://github.com/centricular/webrtcsink/blob/main/plugins/src/webrtcsink/mod.rs#L16">rust API</a>, the element however comes with its own default
+signalling protocol, implemented by the default signaller alongside a standalone
+signalling server script, written in python.</p>
+<p>The protocol is based on the protocol from the gst-examples, extended to support
+a 1 producer -&gt; N consumers configuration, it is admittedly a bit ugly but does
+the job, I have plans for improving this, see <a href="2021-12-14-webrtcsink.html#future-prospects">Future prospects</a>.</p>
+<h2 id="congestion-control">Congestion control</h2>
+<p><code>webrtcsink</code> makes use of the statistics it gathers thanks to the <a href="https://datatracker.ietf.org/doc/html/draft-holmer-rmcat-transport-wide-cc-extensions-01">transport-cc</a>
+RTP extension in order to modulate the target bitrate produced by the video encoders
+when congestion is detected on the network.</p>
+<p>The heuristic I implemented is a hybrid of a Proof-of-Concept Matthew Waters
+[implemented] recently and the [Google Congestion Control algorithm].</p>
+<p>As far as my synthetic testing has gone, it works decently and is fairly
+reactive, it will however certainly evolve in the future as more real-life
+testing happens, more on that later.</p>
+<h2 id="packet-loss-mitigation-techniques">Packet loss mitigation techniques</h2>
+<p><code>webrtcsink</code> will offer to honor retransmission requests, and will propose
+sending ulpfec + red packets for Forward Error Correction on video streams.</p>
+<p>The amount of FEC overhead is modified dynamically alongside the bitrate in
+order not to cause the peer connection to suffer from self-inflicted wounds:
+when the network is congested, sending <em>more</em> packets isn't necessarily the
+brightest idea!</p>
+<p>The algorithm to update the overhead is very naive at the moment, it could
+be refined for instance by taking the roundtrip time into account: when that
+time is low enough, retransmission requests will usually be sufficient for
+addressing packet loss, and the element could reduce the amount of FEC packets
+it sends out accordingly.</p>
+<h2 id="statistics-monitoring">Statistics monitoring</h2>
+<p><code>webrtcsink</code> exposes the statistics from <code>webrtcbin</code> and adds a few of its
+own through a property on the element.</p>
+<p>I have implemented a simple server / client application as an <a href="https://github.com/centricular/webrtcsink/tree/main/plugins/examples">example</a>,
+the web application can plot a few handpicked statistics for any given
+consumer, and turned out to be quite helpful as a debugging / development
+tool, see <a href="2021-12-14-webrtcsink.html#demo">the demo video</a> for an illustration.</p>
+<h2 id="future-prospects">Future prospects</h2>
+<p>In no particular order, here is a wishlist for future improvements:</p>
+<ul>
+<li>
+<p>Implementing the default signalling server as a rust crate. This will allow
+running the signalling server either standalone, or letting <code>webrtcsink</code>
+instantiate it in process, thus reducing the amount of plumbing needed for
+basic usage. In addition, that crate would expose a trait to let applications
+extend the default protocol without having to reimplement their own.</p>
+</li>
+<li>
+<p>Sanitize the default protocol: at the moment it is an ugly mixture of JSON
+and plaintext, it does the job but could be nicer.</p>
+</li>
+<li>
+<p>More congestion control algorithms: at the moment the element exposes a property
+to pick the congestion control method, either <code>homegrown</code> or <code>disabled</code>,
+implementing more algorithms (for instance <a href="https://datatracker.ietf.org/doc/html/draft-ietf-rmcat-gcc-02">GCC</a>, <a href="https://datatracker.ietf.org/doc/html/draft-ietf-rmcat-nada">NADA</a> or <a href="https://datatracker.ietf.org/doc/html/rfc8298">SCReAM</a>) can't hurt.</p>
+</li>
+<li>
+<p>Implementing <a href="https://datatracker.ietf.org/doc/html/draft-ietf-payload-flexible-fec-scheme">flexfec</a>: this is a longstanding wishlist item for me, ULP FEC
+has shortcomings that are addressed by flexfec, a GStreamer implementation would
+be generally useful.</p>
+</li>
+<li>
+<p>High-level integration tests: I am not entirely sure what those would look like,
+but the general idea would be to set up a peer connection from the element to
+various browsers, apply various network conditions, and verify that the output
+isn't overly garbled / frozen / poor quality. That is a very open-ended task
+because the various components involved can't be controlled in a fully
+deterministic manner, and the tests should only act as a robust alarm mechanism
+and not try to validate the final output at the pixel level.</p>
+</li>
+</ul>
+<h2 id="demo">Demo</h2>
+<iframe width="560" height="315" src="https://www.youtube.com/embed/eJpxqVr_tzQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+<h2 id="thanks">Thanks</h2>
+<p>This new element was made possible in part thanks to the contributions from</p>
+<ul>
+<li>
+<p>Matthew Waters at Centricular (webrtcbin)</p>
+</li>
+<li>
+<p>Sebastian Droege at Centricular (GStreamer rust goodness)</p>
+</li>
+<li>
+<p>Olivier from Collabora (RTP stack)</p>
+</li>
+<li>
+<p>The good people at Pexip (RTP stack, transport-cc)</p>
+</li>
+</ul>
+<p>This is not an exhaustive list!</p>
+
+    </div>
+        
+
+
+        
+<hr>
+
+<div data-hotdoc-role="comments" data-github-issue-id="5" data-github-repo="MathieuDuponchelle/MathieuDuponchelle.github.io">
+</div>
+
+
+
+		
+	</div>
+	<div id="search_results">
+		<p>The results of the search are</p>
+	</div>
+	<div id="footer">
+		    
+
+	</div>
+</div>
+
+<div id="toc-column">
+	
+		<div class="edit-button">
+		
+
+	</div>
+		<div id="toc-wrapper">
+		<nav id="toc"></nav>
+	</div>
+</div>
+</div>
+</main>
+
+
+<script src="assets/js/navbar_offset_scroller.js"></script>
+</body>
+</html>

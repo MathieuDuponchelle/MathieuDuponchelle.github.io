@@ -179,6 +179,9 @@ function setupFilters() {
 	}
 
 	function shouldBeVisible(item) {
+    if ($(item).hasClass("hide-if-js"))
+      return false;
+
 		var item_tags = parseTags(item);
 
     if ($(item).hasClass("base_symbol_container"))
@@ -270,6 +273,11 @@ function setupFilters() {
 		$(this).attr("href", utils.hd_context.rel_path + old_href);
 		$(this).attr("data-target", old_href);
 	});
+
+  $("body").scrollspy({
+    target: "#toc",
+    offset: 70,
+  });
 
 	anchors.options = {
 		visible: 'touch',
