@@ -1,0 +1,1639 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>https://mathieuduponchelle.github.io/</id>
+  <title>blog</title>
+  <updated>2021-12-16T00:22:25.548096+00:00</updated>
+  <link href="https://mathieuduponchelle.github.io/" type="text/html"/>
+  <link href="https://mathieuduponchelle.github.io/feed.xml" rel="self" type="application/atom+xml"/>
+  <generator uri="https://lkiesow.github.io/python-feedgen" version="0.9.0">python-feedgen</generator>
+  <entry>
+    <id>https://mathieuduponchelle.github.io/2021-12-14-webrtcsink.html</id>
+    <title>webrtcsink</title>
+    <updated>2021-12-15T00:00:00+00:00</updated>
+    <content type="html">&lt;h1&gt;webrtcsink, a new GStreamer element for WebRTC streaming&lt;/h1&gt;
+&lt;p&gt;&lt;code&gt;webrtcsink&lt;/code&gt; is an all-batteries included GStreamer WebRTC producer, that tries
+its best to do The Right Thing™.&lt;/p&gt;
+&lt;p&gt;Following up on the last part of my &lt;a href="2020-10-09-SMPTE-2022-1-2D-Forward-Error-Correction-in-GStreamer.html"&gt;last blog post&lt;/a&gt;, I have spent some time
+these past few months working on a &lt;a href="https://github.com/centricular/webrtcsink"&gt;WebRTC sink element&lt;/a&gt; to make use of the
+various mitigation techniques and congestion control mechanisms currently
+available in &lt;a href="https://gstreamer.freedesktop.org/"&gt;GStreamer&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;This post will briefly present the implementation choices I made, the current
+features and my ideas for future improvements, with a short demo at the end.&lt;/p&gt;
+&lt;p&gt;Note that &lt;code&gt;webrtcsink&lt;/code&gt; requires latest GStreamer main at the time of writing,
+all required patches will be part of the 1.20 release.&lt;/p&gt;
+&lt;h2&gt;The element&lt;/h2&gt;
+&lt;p&gt;The choice I made here was to make this element a simple sink: while it wraps
+&lt;a href="https://gstreamer.freedesktop.org/documentation/webrtc/index.html"&gt;webrtcbin&lt;/a&gt;, which supports both sending and receiving media streams, webrtcsink
+will only offer sendonly streams to its consumers.&lt;/p&gt;
+&lt;p&gt;The element, unlike &lt;code&gt;webrtcbin&lt;/code&gt;, only accepts raw audio and video streams, and
+takes care of the encoding and payloading itself.&lt;/p&gt;
+&lt;p&gt;Properties are exposed to let the application control what codecs are offered
+to consumers (and in what order), for instance &lt;code&gt;video-caps=video/x-vp9;video/x-vp8&lt;/code&gt;,
+and the choice of the actual encoders can be controlled through the GStreamer
+feature rank mechanism.&lt;/p&gt;
+&lt;p&gt;This decision means that &lt;code&gt;webrtcsink&lt;/code&gt; has direct control over the encoders,
+in particular it can update their target bitrate according to network conditions,
+more on that &lt;a href="2021-12-14-webrtcsink.html#congestion-control"&gt;later&lt;/a&gt;.&lt;/p&gt;
+&lt;h2&gt;Signalling&lt;/h2&gt;
+&lt;p&gt;Applications that use &lt;code&gt;webrtcsink&lt;/code&gt; can implement their own signalling mechanism,
+by implementing a &lt;a href="https://github.com/centricular/webrtcsink/blob/main/plugins/src/webrtcsink/mod.rs#L16"&gt;rust API&lt;/a&gt;, the element however comes with its own default
+signalling protocol, implemented by the default signaller alongside a standalone
+signalling server script, written in python.&lt;/p&gt;
+&lt;p&gt;The protocol is based on the protocol from the gst-examples, extended to support
+a 1 producer -&amp;gt; N consumers configuration, it is admittedly a bit ugly but does
+the job, I have plans for improving this, see &lt;a href="2021-12-14-webrtcsink.html#future-prospects"&gt;Future prospects&lt;/a&gt;.&lt;/p&gt;
+&lt;h2&gt;Congestion control&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;webrtcsink&lt;/code&gt; makes use of the statistics it gathers thanks to the &lt;a href="https://datatracker.ietf.org/doc/html/draft-holmer-rmcat-transport-wide-cc-extensions-01"&gt;transport-cc&lt;/a&gt;
+RTP extension in order to modulate the target bitrate produced by the video encoders
+when congestion is detected on the network.&lt;/p&gt;
+&lt;p&gt;The heuristic I implemented is a hybrid of a Proof-of-Concept Matthew Waters
+&lt;a href="https://gitlab.freedesktop.org/ystreet/gst-examples/-/commits/bw-management"&gt;implemented&lt;/a&gt; recently and the &lt;a href="https://datatracker.ietf.org/doc/html/draft-ietf-rmcat-gcc-02"&gt;Google Congestion Control algorithm&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;As far as my synthetic testing has gone, it works decently and is fairly
+reactive, it will however certainly evolve in the future as more real-life
+testing happens, more on that later.&lt;/p&gt;
+&lt;h2&gt;Packet loss mitigation techniques&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;webrtcsink&lt;/code&gt; will offer to honor retransmission requests, and will propose
+sending ulpfec + red packets for Forward Error Correction on video streams.&lt;/p&gt;
+&lt;p&gt;The amount of FEC overhead is modified dynamically alongside the bitrate in
+order not to cause the peer connection to suffer from self-inflicted wounds:
+when the network is congested, sending &lt;em&gt;more&lt;/em&gt; packets isn't necessarily the
+brightest idea!&lt;/p&gt;
+&lt;p&gt;The algorithm to update the overhead is very naive at the moment, it could
+be refined for instance by taking the roundtrip time into account: when that
+time is low enough, retransmission requests will usually be sufficient for
+addressing packet loss, and the element could reduce the amount of FEC packets
+it sends out accordingly.&lt;/p&gt;
+&lt;h2&gt;Statistics monitoring&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;webrtcsink&lt;/code&gt; exposes the statistics from &lt;code&gt;webrtcbin&lt;/code&gt; and adds a few of its
+own through a property on the element.&lt;/p&gt;
+&lt;p&gt;I have implemented a simple server / client application as an &lt;a href="https://github.com/centricular/webrtcsink/tree/main/plugins/examples"&gt;example&lt;/a&gt;,
+the web application can plot a few handpicked statistics for any given
+consumer, and turned out to be quite helpful as a debugging / development
+tool, see &lt;a href="2021-12-14-webrtcsink.html#demo"&gt;the demo video&lt;/a&gt; for an illustration.&lt;/p&gt;
+&lt;h2&gt;Future prospects&lt;/h2&gt;
+&lt;p&gt;In no particular order, here is a wishlist for future improvements:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;Implementing the default signalling server as a rust crate. This will allow
+running the signalling server either standalone, or letting &lt;code&gt;webrtcsink&lt;/code&gt;
+instantiate it in process, thus reducing the amount of plumbing needed for
+basic usage. In addition, that crate would expose a trait to let applications
+extend the default protocol without having to reimplement their own.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Sanitize the default protocol: at the moment it is an ugly mixture of JSON
+and plaintext, it does the job but could be nicer.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;More congestion control algorithms: at the moment the element exposes a property
+to pick the congestion control method, either &lt;code&gt;homegrown&lt;/code&gt; or &lt;code&gt;disabled&lt;/code&gt;,
+implementing more algorithms (for instance &lt;a href="https://datatracker.ietf.org/doc/html/draft-ietf-rmcat-gcc-02"&gt;GCC&lt;/a&gt;, &lt;a href="https://datatracker.ietf.org/doc/html/draft-ietf-rmcat-nada"&gt;NADA&lt;/a&gt; or &lt;a href="https://datatracker.ietf.org/doc/html/rfc8298"&gt;SCReAM&lt;/a&gt;) can't hurt.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Implementing &lt;a href="https://datatracker.ietf.org/doc/html/draft-ietf-payload-flexible-fec-scheme"&gt;flexfec&lt;/a&gt;: this is a longstanding wishlist item for me, ULP FEC
+has shortcomings that are addressed by flexfec, a GStreamer implementation would
+be generally useful.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;High-level integration tests: I am not entirely sure what those would look like,
+but the general idea would be to set up a peer connection from the element to
+various browsers, apply various network conditions, and verify that the output
+isn't overly garbled / frozen / poor quality. That is a very open-ended task
+because the various components involved can't be controlled in a fully
+deterministic manner, and the tests should only act as a robust alarm mechanism
+and not try to validate the final output at the pixel level.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Demo&lt;/h2&gt;
+&lt;iframe width="560" height="315" src="https://www.youtube.com/embed/eJpxqVr_tzQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen&gt;&lt;/iframe&gt;
+&lt;h2&gt;Thanks&lt;/h2&gt;
+&lt;p&gt;This new element was made possible in part thanks to the contributions from&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;Matthew Waters at Centricular (webrtcbin)&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Sebastian Droege at Centricular (GStreamer rust goodness)&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Olivier from Collabora (RTP stack)&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;The good people at Pexip (RTP stack, transport-cc)&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href="https://sequence.film/"&gt;Sequence&lt;/a&gt; for sponsoring this work&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;This is not an exhaustive list!&lt;/p&gt;
+</content>
+    <link href="https://mathieuduponchelle.github.io/2021-12-14-webrtcsink.html" rel="alternate" type="text/html" title="webrtcsink"/>
+    <summary>A new GStreamer element for WebRTC streaming</summary>
+    <published>2021-12-15T00:00:00+00:00</published>
+  </entry>
+  <entry>
+    <id>https://mathieuduponchelle.github.io/2020-10-09-SMPTE-2022-1-2D-Forward-Error-Correction-in-GStreamer.html</id>
+    <title>SMPTE 2022-1 2D Forward Error Correction in GStreamer</title>
+    <updated>2020-10-09T00:00:00+00:00</updated>
+    <content type="html">&lt;h1&gt;SMPTE 2022-1 2D Forward Error Correction in GStreamer&lt;/h1&gt;
+&lt;p&gt;Various mechanisms have been devised over the years for recovering from packet
+loss when transporting data with RTP over UDP. One such mechanism was
+standardized in SMPTE 2022-1, and I recently implemented support for it in
+&lt;a href="https://gstreamer.freedesktop.org/"&gt;GStreamer&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;TL;DR:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-shell"&gt;gst-launch-1.0 \
+  rtpbin name=rtp fec-encoders='fec,0=&amp;quot;rtpst2022-1-fecenc\ rows\=5\ columns\=5&amp;quot;;' \
+  uridecodebin uri=file:///path/to/video/file ! x264enc key-int-max=60 tune=zerolatency ! \
+    queue ! mpegtsmux ! rtpmp2tpay ssrc=0 ! rtp.send_rtp_sink_0 \
+  rtp.send_rtp_src_0 ! udpsink host=127.0.0.1 port=5000 \
+  rtp.send_fec_src_0_0 ! udpsink host=127.0.0.1 port=5002 async=false \
+  rtp.send_fec_src_0_1 ! udpsink host=127.0.0.1 port=5004 async=false
+&lt;/code&gt;&lt;/pre&gt;
+&lt;pre&gt;&lt;code class="language-shell"&gt;gst-launch-1.0 \
+  rtpbin latency=500 fec-decoders='fec,0=&amp;quot;rtpst2022-1-fecdec\ size-time\=1000000000&amp;quot;;' name=rtp \
+  udpsrc address=127.0.0.1 port=5002 caps=&amp;quot;application/x-rtp, payload=96&amp;quot; ! queue ! rtp.recv_fec_sink_0_0 \
+  udpsrc address=127.0.0.1 port=5004 caps=&amp;quot;application/x-rtp, payload=96&amp;quot; ! queue ! rtp.recv_fec_sink_0_1 \
+  udpsrc address=127.0.0.1 port=5000 caps=&amp;quot;application/x-rtp, media=video, clock-rate=90000, encoding-name=mp2t, payload=33&amp;quot; ! \
+    queue ! netsim drop-probability=0.05 ! rtp.recv_rtp_sink_0 \
+  rtp. ! decodebin ! videoconvert ! queue ! autovideosink
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2&gt;Specification&lt;/h2&gt;
+&lt;h3&gt;SMPTE 2022&lt;/h3&gt;
+&lt;p&gt;From Wikipedia:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;a href="https://en.wikipedia.org/wiki/SMPTE_2022"&gt;SMPTE 2022&lt;/a&gt; is a standard from the Society of Motion Picture and Television
+Engineers (SMPTE) that describes how to send digital video over an IP
+network. Video formats supported include MPEG-2 and serial digital interface.
+The standard was introduced in 2007 and has been expanded in the years since.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;The work presented in this post is the implementation of the first part of that
+standard, 2022-1. 2022-5 is another notable part dealing with Forward Error
+Correction for very high bitrate RTP streams.&lt;/p&gt;
+&lt;h3&gt;XOR&lt;/h3&gt;
+&lt;p&gt;The core mechanism at the heart of SMPTE 2022-1 and other FEC mechanisms is
+usage of &lt;a href="https://en.wikipedia.org/wiki/Exclusive_or"&gt;XOR&lt;/a&gt; (&lt;code&gt;^&lt;/code&gt;). Given a set of N values, it is possible to recover any
+of the values provided all the other values and the result of their xoring
+together have been received.&lt;/p&gt;
+&lt;p&gt;It is logically equivalent and probably easier to think of to retrieving
+the missing value when the sum of all the values has been received, for
+example given 3 values 1, 2 and X, and their sum 6, we can see that X must
+be:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;X = 6 - 2 - 1
+X = 3
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Usage of XOR is a neat trick that makes for a more computer-friendly mechanism:
+while an addition-based mechanism would require 9-bit to protect two 8-bit
+values, 10-bit to protect 4, etc., the required size with XOR remains a constant
+8-bit.&lt;/p&gt;
+&lt;p&gt;An RTP payload is just a collection of 8-bit values, so it follows that the
+payload of FEC packets protecting N RTP packets consists of an equivalent
+amount of 8-bit values.&lt;/p&gt;
+&lt;p&gt;Other fields of the standard RTP header are protected similarly, such as
+the payload type or the timestamp, and the payload length of the media
+packets as well, allowing the mechanism to be applied to media packets
+of varying lengths.&lt;/p&gt;
+&lt;h3&gt;Enter the (2D) matrix&lt;/h3&gt;
+&lt;p&gt;A straightforward application of the mechanism presented above is to simply
+construct and transmit a FEC packet for each set of N consecutive media
+packets.&lt;/p&gt;
+&lt;p&gt;This works well enough when packet loss is truly random, but a common
+pattern of packet loss over UDP is burstiness, where packets may be
+transmitted without loss for some time, then suddenly a few consecutive packets
+go missing. It means that our mechanism will often fall short in such cases,
+as it relies on having at most one packet missing from a sequence of values.&lt;/p&gt;
+&lt;p&gt;A neat sophistication introduced in this standard and adopted in 2022-5
+and &lt;a href="https://tools.ietf.org/html/draft-ietf-payload-flexible-fec-scheme-20"&gt;flexfec&lt;/a&gt; is to think of packet sequences with an extra dimension,
+going from a linear approach:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;M1 M2 M3 RF1 M4 M5 M6 RF2 ...
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;to a two-dimensional approach:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;+--------------+
+| M1 | M2 | M3 | RF1
+| M4 | M5 | M6 | RF2
+| M7 | M8 | M9 | RF3
++--------------+
+ CF1  CF2  CF3
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Where M are the protected media packets, RF are the &amp;quot;row&amp;quot; FEC packets,
+applied to consecutive packets, and CF are the &amp;quot;column&amp;quot; FEC packets, applied
+to sets of packets separated by a fixed interval, in the example above 3.&lt;/p&gt;
+&lt;p&gt;Let's imagine some scenarios to see how this approach addresses bursty
+loss patterns:&lt;/p&gt;
+&lt;p&gt;If M2 and M9 are lost:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;+--------------+
+| M1 | X  | M3 | RF1
+| M4 | M5 | M6 | RF2
+| M7 | M8 | X  | RF3
++--------------+
+ CF1  CF2  CF3
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;They can both be recovered thanks to row FEC (RF1, RF3), but if M2 and M3 are
+lost in a burst, row FEC is now useless:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;+--------------+
+| M1 | X  | X  | RF1
+| M4 | M5 | M6 | RF2
+| M7 | M8 | M9 | RF3
++--------------+
+ CF1  CF2  CF3
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;That is where column FEC comes in handy, as M2 and M3 can still be recovered
+thanks to CF2 and CF3.&lt;/p&gt;
+&lt;p&gt;An interesting property of this scheme is that each dimension can
+complete the other:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;+--------------+
+| M1 | M2 | X  | X
+| M4 | M5 | X  | RF2
+| M7 | X  | X  | RF3
++--------------+
+ CF1  CF2  CF3
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;It appears that we have some heavy packet loss, and that some packets may
+simply not be recovered, for example M3 has its row FEC packet missing, and none
+of the media packets in its column have made it.&lt;/p&gt;
+&lt;p&gt;However all hope is not lost:&lt;/p&gt;
+&lt;p&gt;We first recover M8 thanks to column FEC, which means we can now recover
+M9 with row FEC. M6 is also recoverable with row FEC: M3 can now be recovered
+through column FEC! That's pretty neat.&lt;/p&gt;
+&lt;p&gt;As with many other &amp;quot;vague&amp;quot; problems, there isn't necessarily a perfect dimension
+for the matrix, it has to be determined empirically through trial and error,
+and potentially adapted depending on the particular network that data will be
+transported across.&lt;/p&gt;
+&lt;p&gt;For reference, AWS MediaConnect uses a 10 by 10 matrix, and in my testing with
+the &lt;a href="https://gstreamer.freedesktop.org/documentation/netsim/index.html"&gt;netsim&lt;/a&gt; element, a 5 by 5 matrix worked well to address a 5 percent packet
+loss. &lt;code&gt;netsim&lt;/code&gt; isn't however a faithful representation of a typical unreliable
+network, as when using its &lt;code&gt;drop-probability&lt;/code&gt; property packets will be randomly
+dropped.&lt;/p&gt;
+&lt;h3&gt;Repair window&lt;/h3&gt;
+&lt;p&gt;As the intention behind column FEC is to recover from loss bursts, it would
+be counter-productive to send those FEC packets at the same time as the media
+packets they protect. SMPTE 2022-1 addresses this by specifying how to delay
+these packets, this is known in latter specs as the &amp;quot;Repair window&amp;quot;.&lt;/p&gt;
+&lt;h3&gt;Limitations&lt;/h3&gt;
+&lt;p&gt;SMPTE 2022-1 requires FEC packets to have their SSRC field to zero, this
+makes multiplexing of multiple FEC streams impossible. As a consequence,
+it is often used with an MPEG-TS container, but nothing prevents from using
+it with other types of payload. SMPTE 2022-1 also prohibits usage of CSRC
+entries.&lt;/p&gt;
+&lt;p&gt;The maximum size of the 2D FEC matrix is limited to 255 by 255. This is of
+course more than sufficient for compressed formats, but too limiting for
+raw formats. SMPTE 2022-5 addresses this by turning the row and column fields
+into 10-bit values, making it suitable for usage with very high bandwidth
+formats (&amp;gt; 3 Gbps).&lt;/p&gt;
+&lt;h2&gt;Implementation&lt;/h2&gt;
+&lt;h3&gt;Positioning in rtpbin&lt;/h3&gt;
+&lt;p&gt;The decoder element is positioned upstream of &lt;a href="https://gstreamer.freedesktop.org/documentation/rtpmanager/rtpjitterbuffer.html"&gt;rtpjitterbuffer&lt;/a&gt; in GStreamer's
+&lt;a href="https://gstreamer.freedesktop.org/documentation/rtpmanager/rtpbin.html"&gt;rtpbin&lt;/a&gt;. It exposes one always sinkpad for receiving media packets, and up to
+two request sink pads for receiving FEC packets.&lt;/p&gt;
+&lt;p&gt;&lt;img src="fec-pipeline.svg" alt="" /&gt;&lt;/p&gt;
+&lt;p&gt;All incoming packets are stored for the duration of a configurable repair
+window (&lt;code&gt;size-time&lt;/code&gt; property).&lt;/p&gt;
+&lt;p&gt;My initial approach was to perform recovery upon retransmission requests
+emitted by &lt;code&gt;rtpjitterbuffer&lt;/code&gt;, but this approach had multiple drawbacks:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;code&gt;do-retransmission&lt;/code&gt; had to be set on the jitterbuffer, which would have
+been confusing when retransmission was not actually required.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;code&gt;rtpjitterbuffer&lt;/code&gt; will emit retransmission requests pretty agressively,
+and potentially multiple times for the same packet. This would have
+caused unnecessary processing in the decoder.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Instead, the approach I picked was to proactively reconstruct missing
+packets as soon as possible. When a FEC packet arrives, we immediately check
+whether a media packet in the row / column it protects can be reconstructed.&lt;/p&gt;
+&lt;p&gt;Similarly, when a media packet comes in, we check whether we've already
+received a corresponding packet in both the column and row it belongs to,
+and if so go through the first step listed above.&lt;/p&gt;
+&lt;p&gt;This process is repeated recursively, allowing for recoveries over one
+dimension to unblock recoveries over the other.&lt;/p&gt;
+&lt;p&gt;The encoder exposes one sink pad, one always source pad, and two sometimes
+source pads for pushing FEC packets. It is placed near the tail of rtpbin.&lt;/p&gt;
+&lt;h3&gt;Configuration options&lt;/h3&gt;
+&lt;p&gt;The only property exposed by the decoder is, as mentioned above, the
+duration for which to store packets, which should be at least as long
+as the repair window.&lt;/p&gt;
+&lt;p&gt;The encoder on the other hand is a bit more configurable, with properties
+to set the size of the repair matrix that cannot be changed while &lt;code&gt;PLAYING&lt;/code&gt;,
+and properties to selectively disable row or column FEC while &lt;code&gt;PLAYING&lt;/code&gt;,
+allowing applications to adapt their packet loss / bandwidth usage strategy
+dynamically, based on evolving network conditions.&lt;/p&gt;
+&lt;p&gt;Finally, properties have been added in rtpbin to allow specifying a
+per-session element factory for sending and receiving FEC from the command
+line. These come as a complement to the already existing signals, which
+are still used as a fallback.&lt;/p&gt;
+&lt;h2&gt;Usage&lt;/h2&gt;
+&lt;p&gt;The following pipelines put all this work together, with a sender side
+that can be started with:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-shell"&gt;gst-launch-1.0 \
+  rtpbin name=rtp fec-encoders='fec,0=&amp;quot;rtpst2022-1-fecenc\ rows\=5\ columns\=5&amp;quot;;' \
+  uridecodebin uri=file:///path/to/video/file ! x264enc key-int-max=60 tune=zerolatency ! \
+    queue ! mpegtsmux ! rtpmp2tpay ssrc=0 ! rtp.send_rtp_sink_0 \
+  rtp.send_rtp_src_0 ! udpsink host=127.0.0.1 port=5000 \
+  rtp.send_fec_src_0_0 ! udpsink host=127.0.0.1 port=5002 async=false \
+  rtp.send_fec_src_0_1 ! udpsink host=127.0.0.1 port=5004 async=false
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;and a receiver side with:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-shell"&gt;gst-launch-1.0 \
+  rtpbin latency=500 fec-decoders='fec,0=&amp;quot;rtpst2022-1-fecdec\ size-time\=1000000000&amp;quot;;' name=rtp \
+  udpsrc address=127.0.0.1 port=5002 caps=&amp;quot;application/x-rtp, payload=96&amp;quot; ! queue ! rtp.recv_fec_sink_0_0 \
+  udpsrc address=127.0.0.1 port=5004 caps=&amp;quot;application/x-rtp, payload=96&amp;quot; ! queue ! rtp.recv_fec_sink_0_1 \
+  udpsrc address=127.0.0.1 port=5000 caps=&amp;quot;application/x-rtp, media=video, clock-rate=90000, encoding-name=mp2t, payload=33&amp;quot; ! \
+    queue ! netsim drop-probability=0.05 ! rtp.recv_rtp_sink_0 \
+  rtp. ! decodebin ! videoconvert ! queue ! autovideosink
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2&gt;Future prospects&lt;/h2&gt;
+&lt;h3&gt;More FEC!&lt;/h3&gt;
+&lt;p&gt;Algorithmically-speaking, SMPTE 2022-1 is similar to flexfec. While it is
+based on &lt;a href="https://tools.ietf.org/html/rfc2733"&gt;RFC 2733&lt;/a&gt;, flexfec is based on &lt;a href="https://tools.ietf.org/html/rfc5109"&gt;RFC 5109&lt;/a&gt; and lifts some of the
+constraints I listed earlier. Flexfec is not yet a final RFC, but it can
+already be used as a webRTC protection mechanism with Google Chrome, and
+should eventually obsolete ulpfec.&lt;/p&gt;
+&lt;p&gt;If you are interested in building upon my work to implement flexfec or
+SMPTE 2022-5 support in GStreamer, or are willing to sponsor me for doing so,
+don't hesitate to shoot me a mail at &lt;a href="mailto:mathieu@centricular.com"&gt;mathieu@centricular.com&lt;/a&gt;!&lt;/p&gt;
+&lt;h3&gt;Network-aware heuristics&lt;/h3&gt;
+&lt;p&gt;Adapting configuration and usage of the various packet loss recovery / mitigation
+mechanisms is a hard problem in and of itself, and GStreamer currently leaves this
+as an exercise to the reader. We are gathering all the pieces of the puzzle however:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;Retransmission has been supported for quite some time already
+(courtesy of Julien Isorce, then working at Collabora)&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Support for &lt;a href="https://gitlab.freedesktop.org/gstreamer/gst-plugins-good/-/merge_requests/377"&gt;Transport Wide Congestion Control&lt;/a&gt; has been merged recently
+(courtesy of Havard Graff at Pexip)&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Various mechanisms are available for Forward Error Correction&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;code&gt;rtpbin&lt;/code&gt; collects all sorts of statistics giving us a clear picture
+of current network conditions&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Many of our encoders support dynamically changing their bitrate&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Designing and implementing a solution for tying all these features together would
+be a very interesting undertaking, and make for a more enjoyable out-of-the-box
+RTP experience.&lt;/p&gt;
+&lt;p&gt;I hope this was instructive, curious about comments / corrections (I don't give
+hexadecimal dollars, I'd get bankrupt real quick).&lt;/p&gt;
+</content>
+    <link href="https://mathieuduponchelle.github.io/2020-10-09-SMPTE-2022-1-2D-Forward-Error-Correction-in-GStreamer.html" rel="alternate" type="text/html" title="SMPTE 2022-1 2D Forward Error Correction in GStreamer"/>
+    <summary>New FEC elements in GStreamer</summary>
+    <published>2020-10-09T00:00:00+00:00</published>
+  </entry>
+  <entry>
+    <id>https://mathieuduponchelle.github.io/2018-02-15-Python-Elements-2.html</id>
+    <title>How to write GStreamer (1.0) elements in python (Part II)</title>
+    <updated>2018-02-15T00:00:00+00:00</updated>
+    <content type="html">&lt;h1&gt;Implementing an audio plotter&lt;/h1&gt;
+&lt;p&gt;In the &lt;a href="2018-02-01-Python-Elements.html"&gt;previous post&lt;/a&gt;, I presented a test audio source, and used it to
+illustrate basic &lt;code&gt;gst-python&lt;/code&gt; concepts and present the &lt;code&gt;GstBase.BaseSrc&lt;/code&gt; base
+class.&lt;/p&gt;
+&lt;p&gt;This post assumes familiarity with said concepts, it will expand on some more
+advanced topics, such as caps negotiation, present another base class,
+&lt;a href="https://lazka.github.io/pgi-docs/GstBase-1.0/classes/BaseTransform.html"&gt;GstBase.BaseTransform&lt;/a&gt;, and a useful object, &lt;a href="https://lazka.github.io/pgi-docs/GstAudio-1.0/classes/AudioConverter.html"&gt;GstAudio.AudioConverter&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;The example element will accept any sort of audio input on its sink pad,
+and output a waveform as a series of raw video frames. The output framerate
+and resolution will not be fixed, and instead negotiated with downstream
+elements.&lt;/p&gt;
+&lt;h2&gt;Example result&lt;/h2&gt;
+&lt;p&gt;The following video was generated with:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;gst-launch-1.0 matroskamux name=mux ! progressreport ! filesink location=out.mkv \
+compositor name=comp background=black \
+sink_0::zorder=1 sink_0::ypos=550 sink_1::zorder=0 ! \
+videoconvert ! x264enc tune=zerolatency bitrate=15000 ! queue ! mux. \
+uridecodebin uri=file:/home/meh/devel/gst-build/python-plotting.mp4 name=dec ! \
+audio/x-raw ! tee name=t ! queue ! audioconvert ! audioresample ! volume volume=10.0 ! \
+volume volume=10.0 ! audioplot window-duration=3.0 ! video/x-raw, width=1280, height=150 ! \
+comp.sink_0 \
+t. ! queue ! audioconvert ! audioresample ! opusenc ! queue ! mux. \
+dec. ! video/x-raw ! videoconvert ! deinterlace ! comp.sink_1
+&lt;/code&gt;&lt;/pre&gt;
+&lt;iframe width="770" height="433" src="https://www.youtube.com/embed/o3hjosK1sRQ" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen&gt;&lt;/iframe&gt;
+&lt;p&gt;This is the video most related to python plotting I could find
+&lt;sup&gt;&lt;small&gt; please don't stone me&lt;/small&gt;&lt;/sup&gt;&lt;/p&gt;
+&lt;h2&gt;Implementation&lt;/h2&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;import gi
+import numpy as np
+import matplotlib.patheffects as pe
+
+gi.require_version('Gst', '1.0')
+gi.require_version('GstBase', '1.0')
+gi.require_version('GstAudio', '1.0')
+
+from gi.repository import Gst, GLib, GObject, GstBase, GstAudio, GstVideo
+from numpy_ringbuffer import RingBuffer
+from matplotlib import pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+
+Gst.init(None)
+
+AUDIO_FORMATS = [f.strip() for f in
+                 GstAudio.AUDIO_FORMATS_ALL.strip('{ }').split(',')]
+
+ICAPS = Gst.Caps(Gst.Structure('audio/x-raw',
+                               format=Gst.ValueList(AUDIO_FORMATS),
+                               layout='interleaved',
+                               rate = Gst.IntRange(range(1, GLib.MAXINT)),
+                               channels = Gst.IntRange(range(1, GLib.MAXINT))))
+
+OCAPS = Gst.Caps(Gst.Structure('video/x-raw',
+                               format='ARGB',
+                               width=Gst.IntRange(range(1, GLib.MAXINT)),
+                               height=Gst.IntRange(range(1, GLib.MAXINT)),
+                               framerate=Gst.FractionRange(Gst.Fraction(1, 1),
+                                                           Gst.Fraction(GLib.MAXINT, 1))))
+
+DEFAULT_WINDOW_DURATION = 1.0
+DEFAULT_WIDTH = 640
+DEFAULT_HEIGHT = 480
+DEFAULT_FRAMERATE_NUM = 25
+DEFAULT_FRAMERATE_DENOM = 1
+
+
+class AudioPlotFilter(GstBase.BaseTransform):
+    __gstmetadata__ = ('AudioPlotFilter','Filter', \
+                      'Plot audio waveforms', 'Mathieu Duponchelle')
+
+    __gsttemplates__ = (Gst.PadTemplate.new(&amp;quot;src&amp;quot;,
+                                            Gst.PadDirection.SRC,
+                                            Gst.PadPresence.ALWAYS,
+                                            OCAPS),
+                        Gst.PadTemplate.new(&amp;quot;sink&amp;quot;,
+                                            Gst.PadDirection.SINK,
+                                            Gst.PadPresence.ALWAYS,
+                                            ICAPS))
+    __gproperties__ = {
+        &amp;quot;window-duration&amp;quot;: (float,
+                   &amp;quot;Window Duration&amp;quot;,
+                   &amp;quot;Duration of the sliding window, in seconds&amp;quot;,
+                   0.01,
+                   100.0,
+                   DEFAULT_WINDOW_DURATION,
+                   GObject.ParamFlags.READWRITE
+                  )
+    }
+
+    def __init__(self):
+        GstBase.BaseTransform.__init__(self)
+        self.window_duration = DEFAULT_WINDOW_DURATION
+
+    def do_get_property(self, prop):
+        if prop.name == 'window-duration':
+            return self.window_duration
+        else:
+            raise AttributeError('unknown property %s' % prop.name)
+
+    def do_set_property(self, prop, value):
+        if prop.name == 'window-duration':
+            self.window_duration = value
+        else:
+            raise AttributeError('unknown property %s' % prop.name)
+
+    def do_transform(self, inbuf, outbuf):
+        if not self.h:
+            self.h, = self.ax.plot(np.array(self.ringbuffer),
+                                   lw=0.5,
+                                   color='k',
+                                   path_effects=[pe.Stroke(linewidth=1.0,
+                                                           foreground='g'),
+                                                 pe.Normal()])
+        else:
+            self.h.set_ydata(np.array(self.ringbuffer))
+
+        self.fig.canvas.restore_region(self.background)
+        self.ax.draw_artist(self.h)
+        self.fig.canvas.blit(self.ax.bbox)
+
+        s = self.agg.tostring_argb()
+
+        outbuf.fill(0, s)
+        outbuf.pts = self.next_time
+        outbuf.duration = self.frame_duration
+
+        self.next_time += self.frame_duration
+
+        return Gst.FlowReturn.OK
+
+    def __append(self, data):
+        arr = np.array(data)
+        end = self.thinning_factor * int(len(arr) / self.thinning_factor)
+        arr = np.mean(arr[:end].reshape(-1, self.thinning_factor), 1)
+        self.ringbuffer.extend(arr)
+
+    def do_generate_output(self):
+        inbuf = self.queued_buf
+        _, info = inbuf.map(Gst.MapFlags.READ)
+        res, data = self.converter.convert(GstAudio.AudioConverterFlags.NONE,
+                                            info.data)
+        data = memoryview(data).cast('i')
+
+        nsamples = len(data) - self.buf_offset
+
+        if nsamples == 0:
+            self.buf_offset = 0
+            inbuf.unmap(info)
+            return Gst.FlowReturn.OK, None
+
+        if self.cur_offset + nsamples &amp;lt; self.next_offset:
+            self.__append(data[self.buf_offset:])
+            self.buf_offset = 0
+            self.cur_offset += nsamples
+            inbuf.unmap(info)
+            return Gst.FlowReturn.OK, None
+
+        consumed = self.next_offset - self.cur_offset
+
+        self.__append(data[self.buf_offset:self.buf_offset + consumed])
+        inbuf.unmap(info)
+
+        _, outbuf = GstBase.BaseTransform.do_prepare_output_buffer(self, inbuf)
+
+        ret = self.do_transform(inbuf, outbuf)
+
+        self.next_offset += self.samplesperbuffer
+
+        self.cur_offset += consumed
+        self.buf_offset += consumed
+
+        return ret, outbuf
+
+    def do_transform_caps(self, direction, caps, filter_):
+        if direction == Gst.PadDirection.SRC:
+            res = ICAPS
+        else:
+            res = OCAPS
+
+        if filter_:
+            res = res.intersect(filter_)
+
+        return res
+
+    def do_fixate_caps(self, direction, caps, othercaps):
+        if direction == Gst.PadDirection.SRC:
+            return othercaps.fixate()
+        else:
+            so = othercaps.get_structure(0).copy()
+            so.fixate_field_nearest_fraction(&amp;quot;framerate&amp;quot;,
+                                             DEFAULT_FRAMERATE_NUM,
+                                             DEFAULT_FRAMERATE_DENOM)
+            so.fixate_field_nearest_int(&amp;quot;width&amp;quot;, DEFAULT_WIDTH)
+            so.fixate_field_nearest_int(&amp;quot;height&amp;quot;, DEFAULT_HEIGHT)
+            ret = Gst.Caps.new_empty()
+            ret.append_structure(so)
+            return ret.fixate()
+
+    def do_set_caps(self, icaps, ocaps):
+        in_info = GstAudio.AudioInfo()
+        in_info.from_caps(icaps)
+        out_info = GstVideo.VideoInfo()
+        out_info.from_caps(ocaps)
+
+        self.convert_info = GstAudio.AudioInfo()
+        self.convert_info.set_format(GstAudio.AudioFormat.S32,
+                                     in_info.rate,
+                                     in_info.channels,
+                                     in_info.position)
+        self.converter = GstAudio.AudioConverter.new(GstAudio.AudioConverterFlags.NONE,
+                                                     in_info,
+                                                     self.convert_info,
+                                                     None)
+
+        self.fig = plt.figure()
+        dpi = self.fig.get_dpi()
+        self.fig.patch.set_alpha(0.3)
+        self.fig.set_size_inches(out_info.width / float(dpi),
+                                 out_info.height / float(dpi))
+        self.ax = plt.Axes(self.fig, [0., 0., 1., 1.])
+        self.fig.add_axes(self.ax)
+        self.ax.set_axis_off()
+        self.ax.set_ylim((GLib.MININT, GLib.MAXINT))
+        self.agg = self.fig.canvas.switch_backends(FigureCanvasAgg)
+        self.h = None
+
+        samplesperwindow = int(in_info.rate * in_info.channels * self.window_duration)
+        self.thinning_factor = max(int(samplesperwindow / out_info.width - 1), 1)
+
+        cap = int(samplesperwindow / self.thinning_factor)
+        self.ax.set_xlim([0, cap])
+        self.ringbuffer = RingBuffer(capacity=cap)
+        self.ringbuffer.extend([0.0] * cap)
+        self.frame_duration = Gst.util_uint64_scale_int(Gst.SECOND,
+                                                        out_info.fps_d,
+                                                        out_info.fps_n)
+        self.next_time = self.frame_duration
+
+        self.agg.draw()
+        self.background = self.fig.canvas.copy_from_bbox(self.ax.bbox)
+
+        self.samplesperbuffer = Gst.util_uint64_scale_int(in_info.rate * in_info.channels,
+                                                          out_info.fps_d,
+                                                          out_info.fps_n)
+        self.next_offset = self.samplesperbuffer
+        self.cur_offset = 0
+        self.buf_offset = 0
+
+        return True
+
+GObject.type_register(AudioPlotFilter)
+__gstelementfactory__ = (&amp;quot;audioplot&amp;quot;, Gst.Rank.NONE, AudioPlotFilter)
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2&gt;Discussion&lt;/h2&gt;
+&lt;p&gt;At the moment of writing, the master branches from both &lt;a href="https://gitlab.gnome.org/GNOME/pygobject"&gt;pygobject&lt;/a&gt;
+and &lt;a href="https://cgit.freedesktop.org/gstreamer/gstreamer"&gt;gstreamer&lt;/a&gt; need to be installed.&lt;/p&gt;
+&lt;p&gt;The python libraries we will use for the purpose of plotting are &lt;a href="https://matplotlib.org/"&gt;matplotlib&lt;/a&gt;
+and &lt;a href="https://pypi.python.org/pypi/numpy_ringbuffer/0.2.0"&gt;numpy_ringbuffer&lt;/a&gt; to help decoupling our input and output. Both are
+installable with &lt;code&gt;pip&lt;/code&gt;:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-shell"&gt;python3 -m pip install matplotlib numpy_ringbuffer
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;You can test the element as follows:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-bash"&gt;$ ls python/
+audioplot.py
+$ GST_PLUGIN_PATH=$GST_PLUGIN_PATH:$PWD gst-launch-1.0 audiotestsrc ! \
+audioplot window-duration=0.01 ! videoconvert ! autovideosink
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3&gt;Caps negotiation&lt;/h3&gt;
+&lt;h4&gt;Pad templates&lt;/h4&gt;
+&lt;p&gt;For our audio test source example, I chose to implement the simplest form of
+&lt;a href="#caps-negotiation"&gt;caps negotiation&lt;/a&gt;: fixed negotiation. The element stated that it would output
+a specific format on its source pad, and its base classes handled the rest.&lt;/p&gt;
+&lt;p&gt;For this example however, the element will accept a wide range of input formats,
+and propose a wide range of output formats as well:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;ICAPS = Gst.Caps(Gst.Structure('audio/x-raw',
+                               format=Gst.ValueList(AUDIO_FORMATS),
+                               layout='interleaved',
+                               rate = Gst.IntRange(range(1, GLib.MAXINT)),
+                               channels = Gst.IntRange(range(1, GLib.MAXINT))))
+
+OCAPS = Gst.Caps(Gst.Structure('video/x-raw',
+                               format='ARGB',
+                               width=Gst.IntRange(range(1, GLib.MAXINT)),
+                               height=Gst.IntRange(range(1, GLib.MAXINT)),
+                               framerate=Gst.FractionRange(Gst.Fraction(1, 1),
+                                                           Gst.Fraction(GLib.MAXINT, 1))))
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;    __gsttemplates__ = (Gst.PadTemplate.new(&amp;quot;src&amp;quot;,
+                                            Gst.PadDirection.SRC,
+                                            Gst.PadPresence.ALWAYS,
+                                            OCAPS),
+                        Gst.PadTemplate.new(&amp;quot;sink&amp;quot;,
+                                            Gst.PadDirection.SINK,
+                                            Gst.PadPresence.ALWAYS,
+                                            ICAPS))
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Let's see what &lt;code&gt;gst-inspect-1.0&lt;/code&gt; tells us about its pad templates here:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-json"&gt;Pad Templates:
+  SINK template: 'sink'
+    Availability: Always
+    Capabilities:
+      audio/x-raw
+                 format: { (string)S8, (string)U8, (string)S16LE, (string)S16BE, (string)U16LE, (string)U16BE, (string)S24_32LE, (string)S24_32BE, (string)U24_32LE, (string)U24_32BE, (string)S32LE, (string)S32BE, (string)U32LE, (string)U32BE, (string)S24LE, (string)S24BE, (string)U24LE, (string)U24BE, (string)S20LE, (string)S20BE, (string)U20LE, (string)U20BE, (string)S18LE, (string)S18BE, (string)U18LE, (string)U18BE, (string)F32LE, (string)F32BE, (string)F64LE, (string)F64BE }
+                 layout: interleaved
+                   rate: [ 1, 2147483647 ]
+               channels: [ 1, 2147483647 ]
+
+  SRC template: 'src'
+    Availability: Always
+    Capabilities:
+      video/x-raw
+                 format: ARGB
+                  width: [ 1, 2147483647 ]
+                 height: [ 1, 2147483647 ]
+              framerate: [ 1/1, 2147483647/1 ]
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;The element states that it can accept any audio format, with any rate and any
+number of channels, the only restriction that we place is that samples should
+be interleaved.&lt;/p&gt;
+&lt;p&gt;On the output side, once again we place a single restriction, and state that
+the element will only be able to output ARGB data, this because ARGB is the
+only alpha-capable pixel format the matplotlib API we will use proposes.&lt;/p&gt;
+&lt;h4&gt;Virtual methods&lt;/h4&gt;
+&lt;p&gt;When inheriting from &lt;a href="https://lazka.github.io/pgi-docs/Gst-1.0/classes/Element.html"&gt;Gst.Element&lt;/a&gt;, negotiation is implemented by receiving
+and sending &lt;a href="https://lazka.github.io/pgi-docs/Gst-1.0/classes/Event.html"&gt;events&lt;/a&gt; and &lt;a href="https://lazka.github.io/pgi-docs/Gst-1.0/classes/Query.html"&gt;queries&lt;/a&gt; on the pads of the element.&lt;/p&gt;
+&lt;p&gt;However, most if not all other GStreamer base classes take care of this
+aspect, and instead let their subclasses optionally implement a set of
+virtual methods adapted to the base class' purpose.&lt;/p&gt;
+&lt;p&gt;In the case of BaseTransform, the base class assumes that input and output
+caps will depend on each other: imagine an element that would crop a video
+by a set number of pixels, it is easy to see that the resolution of the
+output will depend on that of the input.&lt;/p&gt;
+&lt;p&gt;With that in mind, the virtual method we need to expose is the aptly-named
+&lt;code&gt;do_transform_caps&lt;/code&gt;:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;    def do_transform_caps(self, direction, caps, filter_):
+        if direction == Gst.PadDirection.SRC:
+            res = ICAPS
+        else:
+            res = OCAPS
+
+        if filter_:
+            res = res.intersect(filter_)
+
+        return res
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;In our case, there is no dependency between input and output: receiving
+audio with a given sample format will not cause it to output video in a
+different resolution.&lt;/p&gt;
+&lt;p&gt;Consequently, when asked to transform the caps of the sink pad, we simply
+need to return the template of the source pad, potentially intersected
+with the optional &lt;code&gt;filter&lt;/code&gt; argument (this parameter is useful for reducing
+the complexity of the overall negotiation process).&lt;/p&gt;
+&lt;p&gt;An example of an element where input and output are interdependent
+is &lt;a href="https://github.com/GStreamer/gst-plugins-good/blob/master/gst/videocrop/gstvideocrop.c#L631-L712"&gt;videocrop&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Implementing this virtual method is enough to make negotiation succeed
+if upstream and downstream elements have compatible capabilities, but
+if for example downstream also accepts a wide range of resolutions, the
+default behaviour of the base class will be to pick the smallest possible
+resolution.&lt;/p&gt;
+&lt;p&gt;This behaviour is known as &lt;code&gt;fixating&lt;/code&gt; the caps, and &lt;code&gt;BaseTransform&lt;/code&gt; exposes
+a virtual method to let the subclass pick a sane default value in such cases:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;    def do_fixate_caps(self, direction, caps, othercaps):
+        if direction == Gst.PadDirection.SRC:
+            return othercaps.fixate()
+        else:
+            so = othercaps.get_structure(0).copy()
+            so.fixate_field_nearest_fraction(&amp;quot;framerate&amp;quot;,
+                                             DEFAULT_FRAMERATE_NUM,
+                                             DEFAULT_FRAMERATE_DENOM)
+            so.fixate_field_nearest_int(&amp;quot;width&amp;quot;, DEFAULT_WIDTH)
+            so.fixate_field_nearest_int(&amp;quot;height&amp;quot;, DEFAULT_HEIGHT)
+            ret = Gst.Caps.new_empty()
+            ret.append_structure(so)
+            return ret.fixate()
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;We do not have a preferred input format, and as a consequence we use the
+default &lt;code&gt;caps.fixate&lt;/code&gt; implementation.&lt;/p&gt;
+&lt;p&gt;However if for example the element is offered to output its full resolution range,
+we are going to try and pick the resolution closest to our preferred default,
+this is what the calls to &lt;code&gt;fixate_field_nearest_int&lt;/code&gt; achieve.&lt;/p&gt;
+&lt;p&gt;This will have no effect if the field is already fixated to a specific value.&lt;/p&gt;
+&lt;p&gt;If the field was set to a range &lt;em&gt;not&lt;/em&gt; containing our preferred value, fixating
+would result in picking the allowed value closest to it, for example given
+our preferred width &lt;code&gt;640&lt;/code&gt; and the allowed range &lt;code&gt;[800, 1200]&lt;/code&gt;, the final value
+of the field would be &lt;code&gt;800&lt;/code&gt;:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-bash"&gt;gst-launch-1.0 audiotestsrc ! audioplot window-duration=0.01 ! \
+capsfilter caps=&amp;quot;video/x-raw, width=[ 800, 1200 ]&amp;quot; ! videoconvert ! autovideosink
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;All that remains to do is for the element to initialize its state based on
+the result of the caps negotiation:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;    def do_set_caps(self, icaps, ocaps):
+        in_info = GstAudio.AudioInfo()
+        in_info.from_caps(icaps)
+        out_info = GstVideo.VideoInfo()
+        out_info.from_caps(ocaps)
+	# [...]
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;The meat of that function is omitted due to its sausage factory nature, amongst
+other things it creates a matplotlib figure with the correct size
+(&lt;code&gt;set_size_inches&lt;/code&gt; is one of the worst API I've ever seen), initializes some
+counters, a ringbuffer, etc ..&lt;/p&gt;
+&lt;h3&gt;Converting the input&lt;/h3&gt;
+&lt;p&gt;As I decided to support any sample format as the input, the most straightforward
+(and reasonably performant) approach is to use &lt;a href="https://lazka.github.io/pgi-docs/GstAudio-1.0/classes/AudioConverter.html"&gt;GstAudio.AudioConverter&lt;/a&gt;:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;        self.convert_info = GstAudio.AudioInfo()
+        self.convert_info.set_format(GstAudio.AudioFormat.S32,
+                                     in_info.rate,
+                                     in_info.channels,
+                                     in_info.position)
+        self.converter = GstAudio.AudioConverter.new(GstAudio.AudioConverterFlags.NONE,
+                                                     in_info,
+                                                     self.convert_info,
+                                                     None)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;We initialize a converter based on our input format, as explained above this is
+best done in &lt;code&gt;do_set_caps&lt;/code&gt;:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;        _, info = inbuf.map(Gst.MapFlags.READ)
+        res, data = self.converter.convert(GstAudio.AudioConverterFlags.NONE,
+                                            info.data)
+        data = memoryview(data).cast('i')
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;By setting the required output format to &lt;code&gt;GstAudio.AudioFormat.S32&lt;/code&gt;, we ensure
+that the endianness of the converted samples will be the native endianness of
+the platform the code runs on, which means that we can in turn cast our
+memoryview to &lt;code&gt;'i'&lt;/code&gt; (memoryview.cast doesn't let its user select an endianness).&lt;/p&gt;
+&lt;p&gt;The best alternative I'm aware of is possibly to use python's &lt;a href="https://docs.python.org/3/library/struct.html"&gt;struct&lt;/a&gt; module
+in combination with the pack and unpack functions exposed on
+&lt;a href="https://lazka.github.io/pgi-docs/GstAudio-1.0/classes/AudioFormatInfo.html"&gt;GstAudio.AudioFormatInfo&lt;/a&gt;, however those are not yet available in the python
+bindings.&lt;/p&gt;
+&lt;h3&gt;Decoupling input and output&lt;/h3&gt;
+&lt;p&gt;The initial version of this element only implemented &lt;code&gt;do_transform&lt;/code&gt;, and simply
+plotted one output buffer per input buffer. This produced a kaleidoscopic effect
+and slaved the framerate to &lt;code&gt;samplerate / samplesperbuffer&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;BaseTransform&lt;/code&gt; exposes a virtual method that allows producing 0 to N output
+buffers per buffer instead, &lt;code&gt;do_generate_output&lt;/code&gt;:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;    def do_generate_output(self):
+        inbuf = self.queued_buf
+	# [...]
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;When a new buffer is chained on the sink pad, &lt;code&gt;do_generate_output&lt;/code&gt; is called
+repeatedly as long as it returns &lt;code&gt;Gst.FlowReturn.OK&lt;/code&gt; and a buffer: thanks to that
+we can fill our ringbuffer and only return a frame once we have processed
+enough new samples to reach our next time. Conversely we can produce multiple
+frames if the size of the input buffer warrants it.&lt;/p&gt;
+&lt;p&gt;Here again, the rest of the function is made up of implementation details,
+an important point to note is that we still expose &lt;code&gt;do_transform&lt;/code&gt;, as
+&lt;code&gt;BaseTransform&lt;/code&gt; assumes otherwise that the element will operate in passthrough
+mode, which obviously creates some interesting problems.&lt;/p&gt;
+&lt;h2&gt;Conclusion&lt;/h2&gt;
+&lt;p&gt;Some improvements could be made to this element:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;It could, instead of averaging channels, use one matplotlib figure per channel,
+and overlap them, to provide an output similar to audacity. This would however
+introduce a dependency between input and output formats!&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Styling is hardcoded, properties such as transparency, line-color, line-width,
+etc.. could be exposed.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;matplotlib is atrociously slow and not really meant for real-time usage. Some
+effort was made to optimize its usage (&lt;code&gt;blit&lt;/code&gt;, &lt;code&gt;thinning_factor&lt;/code&gt;), however
+performance is still disappointing. &lt;a href="http://vispy.org/"&gt;vispy&lt;/a&gt; might be an alternative worth
+exploring.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;On a more positive note, it should be noted that while our previous element
+had a more capable equivalent (&lt;code&gt;audiotestsrc&lt;/code&gt;), this element does not really
+have one, and its implementation is satisfyingly concise!&lt;/p&gt;
+&lt;p&gt;I don't have an idea yet for the next post in the series, the most interesting
+scientific python packages I can think of are machine-learning ones such as
+tensorflow, but I have no experience with these, ideally a new post should
+also explore a different base class (GstAggregator, GstBaseSink?).&lt;/p&gt;
+&lt;p&gt;Suggestions welcome!&lt;/p&gt;
+</content>
+    <link href="https://mathieuduponchelle.github.io/2018-02-15-Python-Elements-2.html" rel="alternate" type="text/html" title="How to write GStreamer (1.0) elements in python (Part II)"/>
+    <summary>An audio plotter</summary>
+    <published>2018-02-15T00:00:00+00:00</published>
+  </entry>
+  <entry>
+    <id>https://mathieuduponchelle.github.io/2018-02-01-Python-Elements.html</id>
+    <title>How to write GStreamer (1.0) elements in python (Part I)</title>
+    <updated>2018-02-01T00:00:00+00:00</updated>
+    <content type="html">&lt;h1&gt;An audio test source&lt;/h1&gt;
+&lt;p&gt;While it turns out writing meaningful elements using GStreamer through
+&lt;a href="https://pygobject.readthedocs.io/en/latest/"&gt;pygobject&lt;/a&gt; was badly broken since &lt;a href="https://gitlab.gnome.org/GNOME/pygobject/merge_requests/10"&gt;2014&lt;/a&gt;, and it had never
+been possible to &lt;a href="https://gitlab.gnome.org/GNOME/pygobject/merge_requests/8"&gt;expose properties&lt;/a&gt; on said elements
+anyway, these minor details shouldn't stop us from leveraging some of
+the unique and awesome packages at the disposal of the python developer
+from GStreamer, and that's what we'll do in this series of posts.&lt;/p&gt;
+&lt;p&gt;Many thanks to the maintainer of pygobject, Christoph Reiter, for his
+reactiveness!&lt;/p&gt;
+&lt;h2&gt;Disclaimer&lt;/h2&gt;
+&lt;p&gt;Writing GStreamer elements in python is usually a terrible idea:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;Python is slow, actual data processing should be avoided at all cost,
+and instead delegated to C libraries such as &lt;a href="http://www.numpy.org/"&gt;numpy&lt;/a&gt;, which is exactly what
+we'll do in this part.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;The infamous &lt;a href="https://wiki.python.org/moin/GlobalInterpreterLock"&gt;GIL&lt;/a&gt; enforces serialization, which means python elements will
+not be able to take advantage of the multithreading capabilities of modern
+platforms.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;The only valid reasons for ignoring these restrictions are, to the best of
+my knowledge:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;Python is the only language you know how to use.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;You want to use a python package that has no equivalent elsewhere, for
+example for scientific computing.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Python rocks, and you don't intend to do anything CPU-intensive anyway.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;All of the above.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;The obvious recommendation these days, if you do not want to deal with
+low-level concerns such as data races and memory safety, is &lt;a href="https://www.rust-lang.org/en-US/"&gt;Rust&lt;/a&gt;. More
+information can be found &lt;a href="https://sdroege.github.io/rustdoc/gstreamer/gstreamer/"&gt;here&lt;/a&gt; and in
+&lt;a href="https://coaxion.net/blog/2018/01/how-to-write-gstreamer-elements-in-rust-part-1-a-video-filter-for-converting-rgb-to-grayscale/"&gt;this series of posts&lt;/a&gt; from Sebastian Dröge.&lt;/p&gt;
+&lt;p&gt;Update: Sebastian has published a &lt;a href="https://coaxion.net/blog/2018/02/how-to-write-gstreamer-elements-in-rust-part-2-a-raw-audio-sine-wave-source/"&gt;post&lt;/a&gt; about the rust
+implementation of an audio test source too!&lt;/p&gt;
+&lt;h2&gt;Some code right off the bat&lt;/h2&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;import gi
+
+gi.require_version('Gst', '1.0')
+gi.require_version('GstBase', '1.0')
+gi.require_version('GstAudio', '1.0')
+
+from gi.repository import Gst, GLib, GObject, GstBase, GstAudio
+import numpy as np
+
+OCAPS = Gst.Caps.from_string (
+        'audio/x-raw, format=F32LE, layout=interleaved, rate=44100, channels=2')
+
+SAMPLESPERBUFFER = 1024
+
+DEFAULT_FREQ = 440
+DEFAULT_VOLUME = 0.8
+DEFAULT_MUTE = False
+DEFAULT_IS_LIVE = False
+
+class AudioTestSrc(GstBase.BaseSrc):
+    __gstmetadata__ = ('CustomSrc','Src', \
+                      'Custom test src element', 'Mathieu Duponchelle')
+
+    __gproperties__ = {
+        &amp;quot;freq&amp;quot;: (int,
+                 &amp;quot;Frequency&amp;quot;,
+                 &amp;quot;Frequency of test signal&amp;quot;,
+                 1,
+                 GLib.MAXINT,
+                 DEFAULT_FREQ,
+                 GObject.ParamFlags.READWRITE
+                ),
+        &amp;quot;volume&amp;quot;: (float,
+                   &amp;quot;Volume&amp;quot;,
+                   &amp;quot;Volume of test signal&amp;quot;,
+                   0.0,
+                   1.0,
+                   DEFAULT_VOLUME,
+                   GObject.ParamFlags.READWRITE
+                  ),
+        &amp;quot;mute&amp;quot;: (bool,
+                 &amp;quot;Mute&amp;quot;,
+                 &amp;quot;Mute the test signal&amp;quot;,
+                 DEFAULT_MUTE,
+                 GObject.ParamFlags.READWRITE
+                ),
+        &amp;quot;is-live&amp;quot;: (bool,
+                 &amp;quot;Is live&amp;quot;,
+                 &amp;quot;Whether to act as a live source&amp;quot;,
+                 DEFAULT_IS_LIVE,
+                 GObject.ParamFlags.READWRITE
+                ),
+    }
+
+    __gsttemplates__ = Gst.PadTemplate.new(&amp;quot;src&amp;quot;,
+                                           Gst.PadDirection.SRC,
+                                           Gst.PadPresence.ALWAYS,
+                                           OCAPS)
+
+    def __init__(self):
+        GstBase.BaseSrc.__init__(self)
+        self.info = GstAudio.AudioInfo()
+
+        self.freq = DEFAULT_FREQ
+        self.volume = DEFAULT_VOLUME
+        self.mute = DEFAULT_MUTE
+
+        self.set_live(DEFAULT_IS_LIVE)
+        self.set_format(Gst.Format.TIME)
+
+    def do_set_caps(self, caps):
+        self.info.from_caps(caps)
+        self.set_blocksize(self.info.bpf * SAMPLESPERBUFFER)
+        return True
+
+    def do_get_property(self, prop):
+        if prop.name == 'freq':
+            return self.freq
+        elif prop.name == 'volume':
+            return self.volume
+        elif prop.name == 'mute':
+            return self.mute
+        elif prop.name == 'is-live':
+            return self.is_live
+        else:
+            raise AttributeError('unknown property %s' % prop.name)
+
+    def do_set_property(self, prop, value):
+        if prop.name == 'freq':
+            self.freq = value
+        elif prop.name == 'volume':
+            self.volume = value
+        elif prop.name == 'mute':
+            self.mute = value
+        elif prop.name == 'is-live':
+            self.set_live(value)
+        else:
+            raise AttributeError('unknown property %s' % prop.name)
+
+    def do_start (self):
+        self.next_sample = 0
+        self.next_byte = 0
+        self.next_time = 0
+        self.accumulator = 0
+        self.generate_samples_per_buffer = SAMPLESPERBUFFER
+
+        return True
+
+    def do_gst_base_src_query(self, query):
+        if query.type == Gst.QueryType.LATENCY:
+            latency = Gst.util_uint64_scale_int(self.generate_samples_per_buffer,
+                    Gst.SECOND, self.info.rate)
+            is_live = self.is_live
+            query.set_latency(is_live, latency, Gst.CLOCK_TIME_NONE)
+            res = True
+        else:
+            res = GstBase.BaseSrc.do_query(self, query)
+        return res
+
+    def do_get_times(self, buf):
+        end = 0
+        start = 0
+        if self.is_live:
+            ts = buf.pts
+            if ts != Gst.CLOCK_TIME_NONE:
+                duration = buf.duration
+                if duration != Gst.CLOCK_TIME_NONE:
+                    end = ts + duration
+                start = ts
+        else:
+            start = Gst.CLOCK_TIME_NONE
+            end = Gst.CLOCK_TIME_NONE
+
+        return start, end
+
+    def do_create(self, offset, length):
+        if length == -1:
+            samples = SAMPLESPERBUFFER
+        else:
+            samples = int(length / self.info.bpf)
+
+        self.generate_samples_per_buffer = samples
+
+        bytes_ = samples * self.info.bpf
+
+        next_sample = self.next_sample + samples
+        next_byte = self.next_byte + bytes_
+        next_time = Gst.util_uint64_scale_int(next_sample, Gst.SECOND, self.info.rate)
+
+        if not self.mute:
+            r = np.repeat(
+                    np.arange(self.accumulator, self.accumulator + samples),
+                    self.info.channels)
+            data = ((np.sin(2 * np.pi * r * self.freq / self.info.rate) * self.volume)
+                    .astype(np.float32))
+        else:
+            data = [0] * bytes_
+
+        buf = Gst.Buffer.new_wrapped(bytes(data))
+
+        buf.offset = self.next_sample
+        buf.offset_end = next_sample
+        buf.pts = self.next_time
+        buf.duration = next_time - self.next_time
+
+        self.next_time = next_time
+        self.next_sample = next_sample
+        self.next_byte = next_byte
+        self.accumulator += samples
+        self.accumulator %= self.info.rate / self.freq
+
+        return (Gst.FlowReturn.OK, buf)
+
+
+__gstelementfactory__ = (&amp;quot;audiotestsrc_py&amp;quot;, Gst.Rank.NONE, AudioTestSrc)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2&gt;Discussion&lt;/h2&gt;
+&lt;p&gt;To make that element available, assuming &lt;a href="https://gstreamer.freedesktop.org/modules/gst-python.html"&gt;gst-python&lt;/a&gt; is installed, the code
+above needs to be placed in a &lt;code&gt;python&lt;/code&gt; directory, anywhere gstreamer will look
+for plugins (eg &lt;code&gt;GST_PLUGIN_PATH&lt;/code&gt;):&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-bash"&gt;$ ls python/
+srcelement.py
+$ GST_PLUGIN_PATH=$GST_PLUGIN_PATH:$PWD gst-inspect-1.0 audiotestsrc_py
+Factory Details:
+  Rank                     none (0)
+  Long-name                CustomSrc
+[...]
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;At the moment of writing, the master branches from both &lt;a href="https://gitlab.gnome.org/GNOME/pygobject"&gt;pygobject&lt;/a&gt;
+and &lt;a href="https://cgit.freedesktop.org/gstreamer/gstreamer"&gt;gstreamer&lt;/a&gt; need to be installed.&lt;/p&gt;
+&lt;p&gt;Let's study some of the interesting parts now.&lt;/p&gt;
+&lt;h3&gt;Imports&lt;/h3&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;from gi.repository import Gst, GLib, GObject, GstBase, GstAudio
+import numpy as np
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Nothing unfamiliar here, assuming you've already done some pygobject
+programming, note that unlike an application that would usually initialize
+GStreamer here with a call to &lt;code&gt;Gst.init()&lt;/code&gt;, we don't need to do that.&lt;/p&gt;
+&lt;p&gt;We will use numpy to generate samples in a reasonably efficient manner,
+more on that below.&lt;/p&gt;
+&lt;h3&gt;Registration&lt;/h3&gt;
+&lt;p&gt;Using gst-python, we implement new elements as python classes, which we
+need to register with GStreamer. The python plugin loader implemented
+by gst-python will import our module, and look for an attribute with
+the well-known name &lt;code&gt;__gstelementfactory__&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;The value of this attribute should be a tuple consisting of a factory-name,
+a rank, and the class that implements the element.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;If the module needs to register multiple elements, it can do so by
+assigning a tuple of such tuples instead.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;__gstelementfactory__ = (&amp;quot;audiotestsrc_py&amp;quot;, Gst.Rank.NONE, AudioTestSrc)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;The class that we register is expected to hold a &lt;code&gt;__gstmetadata__&lt;/code&gt; class
+attribute:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;class AudioTestSrc(GstBase.BaseSrc):
+    __gstmetadata__ = ('CustomSrc','Src', \
+                      'Custom test src element', 'Mathieu Duponchelle')
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;The contents of this tuple will be used to call
+&lt;code&gt;gst_element_class_set_metadata&lt;/code&gt;, you'll find more information in
+its &lt;a href="https://gstreamer.freedesktop.org/data/doc/gstreamer/head/gstreamer/html/GstElement.html#gst-element-class-set-metadata"&gt;documentation&lt;/a&gt;&lt;/p&gt;
+&lt;h3&gt;Inheritance&lt;/h3&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;class AudioTestSrc(GstBase.BaseSrc):
+    # [...]
+    def __init__ (self):
+        GstBase.BaseSrc.__init__(self)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Our element will be a GStreamer source: it will not have any sink pads, and
+will output data on a single source pad.&lt;/p&gt;
+&lt;p&gt;There is a base class in GStreamer for that type of elements,
+&lt;a href="https://gstreamer.freedesktop.org/data/doc/gstreamer/head/gstreamer-libs/html/GstBaseSrc.html"&gt;GstBase.BaseSrc&lt;/a&gt;. It handles state changes, supports live sources,
+push and pull-mode scheduling, and more.&lt;/p&gt;
+&lt;p&gt;Inheritance is standard, the subclass needs to chain up in its &lt;code&gt;__init__&lt;/code&gt;
+function if it implements it.&lt;/p&gt;
+&lt;p&gt;Overriding virtual methods can be done by prefixing the name of the virtual
+method as declared in C with &lt;code&gt;do_&lt;/code&gt;, more on that later.&lt;/p&gt;
+&lt;h3&gt;Initialization&lt;/h3&gt;
+&lt;p&gt;The &lt;code&gt;__init__&lt;/code&gt; method should obviously only be called once over the lifetime
+of the element.&lt;/p&gt;
+&lt;p&gt;This means we only need to initialize here those variables that will not
+need to be reinitialized when the element switches states. We only declare
+and (re)initialize other variables in the &lt;code&gt;do_start&lt;/code&gt; virtual method
+implementation.&lt;/p&gt;
+&lt;p&gt;Note that linters might complain when attributes are declared outside of
+the &lt;code&gt;__init__&lt;/code&gt; function, as we do in the &lt;code&gt;do_start&lt;/code&gt; virtual method, if you
+wish to strictly comply you will want to declare them in &lt;code&gt;__init__&lt;/code&gt; as well,
+we didn't do so here for the sake of brevity.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;As our base class declares a &lt;code&gt;start&lt;/code&gt; vmethod, we implement it by defining
+a &lt;code&gt;do_start&lt;/code&gt; method in our class.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h3&gt;Capabilities, negotiation&lt;/h3&gt;
+&lt;p&gt;In this example, we implement an element that will only output a single
+format:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;OCAPS = Gst.Caps.from_string (
+        'audio/x-raw, format=F32LE, layout=interleaved, rate=44100, channels=2')
+
+# [...]
+
+class AudioTestSrc(GstBase.BaseSrc):
+    # [...]
+
+    __gsttemplates__ = Gst.PadTemplate.new(&amp;quot;src&amp;quot;,
+                                           Gst.PadDirection.SRC,
+                                           Gst.PadPresence.ALWAYS,
+                                           OCAPS)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;&lt;code&gt;__gsttemplates__&lt;/code&gt; is another well-known name that the python plugin loader
+will look up, it matches the arguments to
+&lt;a href="https://gstreamer.freedesktop.org/data/doc/gstreamer/head/gstreamer/html/GstPadTemplate.html#gst-pad-template-new"&gt;&lt;code&gt;gst_pad_template_new&lt;/code&gt;&lt;/a&gt;; here we declare that we will expose
+a single source pad named &amp;quot;src&amp;quot; that will output data in the format specified
+by &lt;code&gt;OCAPS&lt;/code&gt;: 2 channels of interleaved float samples, at a rate of 44100 audio
+frames (so 88200 samples) a second.&lt;/p&gt;
+&lt;p&gt;As that format is fixed, we won't have to concern ourselves with negotiation
+in that element, this will be automatically handled by our parent classes.&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;    def do_set_caps(self, caps):
+        self.info.from_caps(caps)
+        self.set_blocksize (self.info.bpf * SAMPLESPERBUFFER)
+        return True
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;We technically could have done this directly in &lt;code&gt;__init__&lt;/code&gt;, as we already know
+what the result of the negotiation will be, however if in the future we decided
+to make things more dynamic, for example by supporting multiple sample formats,
+the audio info would need to be initialized at the end of the negotiation
+process, as we do here.&lt;/p&gt;
+&lt;p&gt;The next blog post in this series will present an element implementing dynamic
+negotiation, a good exercise for the reader could be to port this element to
+support a range of supported output channels, or a second sample format, eg
+32-bit integers.&lt;/p&gt;
+&lt;h3&gt;Processing&lt;/h3&gt;
+&lt;p&gt;We chose to generate samples in our &lt;code&gt;do_create&lt;/code&gt; implementation for no
+particular reason, the default implementation would call &lt;code&gt;do_alloc&lt;/code&gt; then
+&lt;code&gt;do_fill&lt;/code&gt;, we should only have to implement the latter if we wished to
+use that approach, as we have called &lt;code&gt;GstBase.BaseSrc.set_blocksize&lt;/code&gt; in
+our &lt;code&gt;set_caps&lt;/code&gt; implementation.&lt;/p&gt;
+&lt;p&gt;I will not discuss the implementation details here, we generate an array
+of float samples forming a sine wave using numpy, and keep track of where
+the waveform was at in the &lt;code&gt;accumulator&lt;/code&gt; attribute, this is all pretty simple
+stuff.&lt;/p&gt;
+&lt;p&gt;We could of course generate the samples in a for loop, but performance would
+be abysmal.&lt;/p&gt;
+&lt;p&gt;The interesting part here is that &lt;code&gt;GstBaseSrc&lt;/code&gt; expects us to return a tuple
+made of &lt;code&gt;(Gst.FlowReturn.OK, output_buffer)&lt;/code&gt; if everything went well,
+otherwise typically &lt;code&gt;(Gst.FlowReturn.ERROR, None)&lt;/code&gt; if there was an issue
+generating the data.&lt;/p&gt;
+&lt;p&gt;It is the responsability of the &lt;code&gt;create&lt;/code&gt; vmethod implementation to .. create
+the output buffer, which is just what we do with
+&lt;code&gt;Gst.Buffer.new_wrapped (bytes(data))&lt;/code&gt;.&lt;/p&gt;
+&lt;h3&gt;Properties&lt;/h3&gt;
+&lt;p&gt;It is possible with pygobject to declare GObject properties with a decorator,
+however if one wants to specify minimum, maximum or default values, or
+provide some documentation, to be for example presented in the &lt;code&gt;gst-inspect&lt;/code&gt;
+output, one needs to use a more verbose form:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;class AudioTestSrc(GstBase.BaseSrc):
+    # [...]
+    __gproperties__ = {
+        &amp;quot;freq&amp;quot;: (int,
+                 &amp;quot;Frequency&amp;quot;,
+                 &amp;quot;Frequency of test signal&amp;quot;,
+                 1,
+                 GLib.MAXINT,
+                 DEFAULT_FREQ,
+                 GObject.ParamFlags.READWRITE
+                ),
+        # [...]
+    }
+
+    # [...]
+
+    def do_get_property(self, prop):
+        if prop.name == 'freq':
+            return self.freq
+
+    [...]
+    def do_set_property(self, prop, value):
+        if prop.name == 'freq':
+            self.freq = value
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Some interesting improvements here could be to declare the freq property as
+&lt;a href="https://gstreamer.freedesktop.org/documentation/application-development/advanced/dparams.html"&gt;controllable&lt;/a&gt;, or expose a property allowing to change the shape of the
+waveform (sine, square, triangle, ...)&lt;/p&gt;
+&lt;h3&gt;Liveness&lt;/h3&gt;
+&lt;p&gt;Three things are needed to output data in &amp;quot;live&amp;quot; mode:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;Calling &lt;code&gt;GstBase.BaseSrc.set_live(True)&lt;/code&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Reporting the latency by handling the LATENCY query, which is what we do
+in &lt;code&gt;do_gst_base_src_query&lt;/code&gt;. The attentive reader might have noticed that
+even though the &lt;code&gt;GstBaseSrc&lt;/code&gt; virtual method is named &lt;code&gt;query&lt;/code&gt;, we didn't
+implement it as &lt;code&gt;do_query&lt;/code&gt;: that is because &lt;code&gt;GstElement&lt;/code&gt; also exposes
+a virtual method with the same name, and we have to lift the ambiguity.
+Try implementing &lt;code&gt;do_query&lt;/code&gt; and see what happens.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Implementing &lt;code&gt;get_times&lt;/code&gt; to let the base class know when it should actually
+push the buffer out.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Our element does all three things, and exposes a property named &lt;code&gt;is-live&lt;/code&gt; to
+control that behaviour, you can verify it as follows:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-bash"&gt;GST_PLUGIN_PATH=$GST_PLUGIN_PATH:$PWD gst-launch-1.0 -v audiotestsrc_py ! \
+fakesink silent=false
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;as opposed to:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-bash"&gt;GST_PLUGIN_PATH=$GST_PLUGIN_PATH:$PWD gst-launch-1.0 -v audiotestsrc_py is-live=true ! \
+fakesink silent=false
+&lt;/code&gt;&lt;/pre&gt;
+&lt;blockquote&gt;
+&lt;p&gt;In this context, we are not really producing data live, but simply simulating
+by having the base class wait&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2&gt;Conclusion&lt;/h2&gt;
+&lt;p&gt;We have implemented a simplified version of &lt;code&gt;audiotestsrc&lt;/code&gt; here, the reader
+can update the code to support more features and familiarize themselves with
+the GstBaseSrc API, or alternatively try to implement a video test src.&lt;/p&gt;
+&lt;p&gt;In the next post, we will present a GstBaseTransform implementation, that
+accepts audio as an input and outputs a plot generated with matplotlib. There
+will be dynamic negotiation, decoupling of the input and output, and more
+interesting things.&lt;/p&gt;
+</content>
+    <link href="https://mathieuduponchelle.github.io/2018-02-01-Python-Elements.html" rel="alternate" type="text/html" title="How to write GStreamer (1.0) elements in python (Part I)"/>
+    <summary>A test audio src</summary>
+    <published>2018-02-01T00:00:00+00:00</published>
+  </entry>
+  <entry>
+    <id>https://mathieuduponchelle.github.io/2016-05-26-GST-Hackfest.html</id>
+    <title>Back from the GST hackfest</title>
+    <updated>2016-05-26T00:00:00+00:00</updated>
+    <content type="html">&lt;h1&gt;Back from the GST hackfest&lt;/h1&gt;
+&lt;p&gt;I was once again kindly sponsored by &lt;a href="https://www.collabora.com/"&gt;Collabora&lt;/a&gt; to temporarily relocate my hacking environment to a place filled with awesome people.
+This time the place was &lt;a href="https://en.wikipedia.org/wiki/Thessaloniki"&gt;Thessaloniki&lt;/a&gt;, and the people were GStreamer developers.&lt;/p&gt;
+&lt;h2&gt;Getting there&lt;/h2&gt;
+&lt;p&gt;I hadn't taken any vacation since I've started working for Collabora, two years ago (mandatory &amp;quot;geez, time flies&amp;quot;), apart from one day or two for Christmas-related
+activities, so I decided I'd take two weeks, and do a little road trip across Europe. Strangely enough my girlfriend, who when I went to the Staines (near London) hackfest
+only asked when I'd come back, was already packing her swimsuit this time.&lt;/p&gt;
+&lt;p&gt;After a one-day stop in Venice (fortunately not too crowded at this time of year), and a three-day visit of &lt;a href="https://en.wikipedia.org/wiki/Dubrovnik"&gt;Dubrovnik&lt;/a&gt; aka King's landing,
+our intention was to get to Thessaloniki through Albania and arrive on the evening before the hackfest started. Albanian customs, however, didn't seem to share this intention at all,
+and we ended up having to cross Montenegro from South to North, get in Serbia, go East and be refused entry in Kosovo, go East again and finally get to Thessaloniki through Macedonia.&lt;/p&gt;
+&lt;p&gt;Needless to say we arrived at 10 A.M. on the day the hackfest started.&lt;/p&gt;
+&lt;p&gt;I briefly logged in to the IRC channel, told everyone I'd have to be excused for the day, got greeted by Edward Hervey mumbling stuff about &amp;quot;equations everywhere&amp;quot;, and
+others suggesting I should have engaged in bribery (I will not name names here), logged off and slept for 15 hours.&lt;/p&gt;
+&lt;h2&gt;Second (actually my first) day&lt;/h2&gt;
+&lt;p&gt;I arrived at the hackfest to find a nice, two-storey building reserved for our usage, and &lt;a href="https://lubosz.wordpress.com/"&gt;Lubosz Sarnecki&lt;/a&gt; in the middle of
+kilometers of cables, and enough hardware to open a small VR shop.
+He needed a powerful GPU to set up the leapmotion's &lt;a href="https://developer.leapmotion.com/gallery/blocks"&gt;blocks demo&lt;/a&gt;, and we figured my laptop would
+do the trick. We set everything up, then struggled for some time until accepting it really wouldn't be up to the task.&lt;/p&gt;
+&lt;p&gt;We ended up borrowing a desktop PC, which proved to be up to the task, and after some fiddling the demo was finally set up and working smoothly.&lt;/p&gt;
+&lt;p&gt;It was well worth the wait: leapmotion's tech is amazing, and after some time making and manipulating blocks, whoever isn't convinced about the future of VR might well
+reconsider! I'm really curious to see the games people will come up with, a VR remake of &lt;a href="https://www.youtube.com/watch?v=Ue4i44e_7W8"&gt;Black &amp;amp; White&lt;/a&gt; would
+be pretty awesome if you ask me.&lt;/p&gt;
+&lt;p&gt;More to the point, Lubosz is currently writing a GStreamer video filter to transform streams for [Insert VR headset here] consumption, but as far as I understand
+his work is still in progress, and not yet demoable.&lt;/p&gt;
+&lt;p&gt;It was already late, and after a few people had taken turns trying out the demo, the day was already gone.&lt;/p&gt;
+&lt;h2&gt;Third (actually my second) day&lt;/h2&gt;
+&lt;p&gt;My original goal for this hackfest was to implement a hotdoc extension for documenting GStreamer plugins, but with one day left that was hardly
+a completable goal, and after talking with Tim-Philipp Müller, it appeared he had more immediate concerns in terms of documentation, namely
+porting existing content to markdown. I briefly talked him into sticking to the CommonMark specification, and using hotdoc to arrange it all
+together. Olivier Crete started porting the contents of gstreamer.com, and I started work on the Plugin Writer's manual.&lt;/p&gt;
+&lt;p&gt;It was decided a new repository for the documentation would be created, and that we would update https://gstreamer.freedesktop.org/ incrementally
+with its contents, once maintainers are happy with the proposed solution. I still need to finalize my port of the manual, hopefully by the end
+of this week I'll have something decent to propose.&lt;/p&gt;
+&lt;h2&gt;Conclusion&lt;/h2&gt;
+&lt;p&gt;I'm afraid I don't have much to report on the GStreamer side of the GStreamer hackfest, hopefully others will fill that gap, I'll update this page
+with links to other people's posts.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Sebastian wrote about &lt;a href="https://coaxion.net/blog/2016/05/writing-gstreamer-plugins-and-elements-in-rust/"&gt;writing gstreamer elements in rust&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</content>
+    <link href="https://mathieuduponchelle.github.io/2016-05-26-GST-Hackfest.html" rel="alternate" type="text/html" title="Back from the GST hackfest"/>
+    <summary>My experience at the GStreamer hackfest</summary>
+    <published>2016-05-26T00:00:00+00:00</published>
+  </entry>
+  <entry>
+    <id>https://mathieuduponchelle.github.io/2016-02-22-DX-Hackfest.html</id>
+    <title>Back from the DX hackfest</title>
+    <updated>2016-02-22T00:00:00+00:00</updated>
+    <content type="html">&lt;h2&gt;Back from the DX hackfest&lt;/h2&gt;
+&lt;p&gt;I had the chance to attend the GNOME developer experience hackfest three weeks ago, I'm ashamed to admit three weeks went by before I took the time to write this post!&lt;/p&gt;
+&lt;p&gt;A lot of people I met there I already knew, I was happy to meet some people I didn't yet, like James, who's working on &lt;a href="https://github.com/purpleidea/oh-my-vagrant"&gt;Oh-My-Vagrant&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Philip Withnall has already done a good job at summarizing the general issues we looked at as a group during this hackfest in &lt;a href="https://tecnocode.co.uk/2016/02/01/dx-hackfest-2016-aftermath/"&gt;this blogpost&lt;/a&gt;, so this post will revolve around my own experience over there.&lt;/p&gt;
+&lt;p&gt;I am currently working on &lt;a href="https://github.com/hotdoc/hotdoc"&gt;hotdoc&lt;/a&gt; for &lt;a href="https://www.collabora.com/"&gt;collabora&lt;/a&gt;, and I spent the hackfest presenting it to the documentation team members (Ekaterina Gerasimova, Frédéric Péters, Bastian Ilso and Alexandre Franke), discussing its future use with them and Philip Chimento, and making some improvements to it with the help of Thibault Saunier.&lt;/p&gt;
+&lt;h4&gt;Hotdoc improvements&lt;/h4&gt;
+&lt;p&gt;I helped Frédéric with testing porting gtk from gtk-doc to hotdoc, and landed a patch from him in hotdoc-gi-extension, the resulting documentation seemed overall correct.&lt;/p&gt;
+&lt;p&gt;I worked with Thibault Saunier to implement a &lt;a href="https://people.collabora.com/%7Emeh/hotdoc_hotdoc/html/syntax-extensions.html#smart-file-inclusion-syntax"&gt;smart include feature&lt;/a&gt; in hotdoc.&lt;/p&gt;
+&lt;h4&gt;GNOME Builder&lt;/h4&gt;
+&lt;p&gt;I discussed how to use hotdoc as a &lt;a href="https://wiki.gnome.org/Apps/Builder"&gt;GNOME Builder&lt;/a&gt; plugin with Christian Hergert, but the solution he advised me to follow actually falls short because hotdoc is python2, and it seems libpeas cannot handle both python2 and python3 in the same process. I'm still a bit confused as to why this limitation would exist, as the proposed solution involved exposing a D-Bus service, but I'm sure we'll find a better solution when we need to.&lt;/p&gt;
+&lt;h4&gt;GNOME developer portal&lt;/h4&gt;
+&lt;p&gt;I discussed the future of &lt;a href="https://developer.gnome.org/"&gt;https://developer.gnome.org/&lt;/a&gt; with the documentation team. They liked the search interface in hotdoc (it does work quite well :), and we all agreed that a tighter integration with actual API references would be nice to have, amongst various other things (online editing for example).&lt;/p&gt;
+&lt;p&gt;The website is currently implemented as &lt;a href="https://github.com/GNOME/gnome-devel-docs/"&gt;a series of mallard pages&lt;/a&gt;. Hotdoc does not read mallard pages, and it isn't part of my current plans. A possible way forward would be to drop mallard altogether, and have all the pages be &amp;quot;hotdoc-flavored&amp;quot; markdown pages. I think this could make sense because:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;gnome-devel-docs doesn't make an extensive use of mallard.&lt;/li&gt;
+&lt;li&gt;markdown pages present a significantly lower barrier to entry, and most people are familiar with the syntax.&lt;/li&gt;
+&lt;li&gt;the developer site and the API references it would link to would share the same format for standalone documentation source files.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;I have since then implemented a &lt;a href="https://github.com/jgm/pandoc/pull/2700"&gt;simple pandoc reader&lt;/a&gt;, and used it to make a very naive port of gnome-devel-docs, the result can be seen &lt;a href="https://people.collabora.com/%7Emeh/dgo_hotdoc/html/index.html"&gt;here&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;This port is naive because I made absolutely no manual edits to the produced markdown files, which explains why the index page looks pretty ugly, but pages like &lt;a href="https://people.collabora.com/%7Emeh/dgo_hotdoc/html/overview-media.html"&gt;https://people.collabora.com/~meh/dgo_hotdoc/html/overview-media.html&lt;/a&gt; are pretty faithful to the source, and it would mostly be a matter of custom CSS and trivial edits to get the thing to really look good.&lt;/p&gt;
+&lt;p&gt;You can have a look at the generated markdown files &lt;a href="https://github.com/MathieuDuponchelle/gnome-devel-docs/tree/hotdoc/markdown_files"&gt;here&lt;/a&gt;.&lt;/p&gt;
+&lt;h4&gt;Philip Chimento's devdocs work&lt;/h4&gt;
+&lt;p&gt;Philip Chimento has been working on a &lt;a href="https://github.com/ptomato/gobject-introspection/commits/wip/ptomato/devdocs"&gt;fork of devdocs&lt;/a&gt;, in an effort to create a javascriot developer portal for GNOME. I see some drawbacks with his approach, which we've discussed together and I will not detail here, but overall his current solution has the advantage of code reuse, and lightweightness, as the output is generated stictly from gir files.&lt;/p&gt;
+&lt;p&gt;My opinion on this is that his work is a nice short-term solution to a clear problem (gathering together the javascript documentation for most (all ?) GNOME libraries, and I suggested linking to it on the current portal.&lt;/p&gt;
+&lt;p&gt;However I think the design of devdocs and his solution will fall short for the long-term requirements that the GNOME documentation team seems to set, and Philip seemed to agree.&lt;/p&gt;
+&lt;p&gt;This is still a very open issue, and Philip and I definitely intend to work together to provide the best possible experience for GNOME hackers, newbies and senior alike.&lt;/p&gt;
+</content>
+    <link href="https://mathieuduponchelle.github.io/2016-02-22-DX-Hackfest.html" rel="alternate" type="text/html" title="Back from the DX hackfest"/>
+    <summary>My experience at the developer experience hackfest</summary>
+    <published>2016-02-22T00:00:00+00:00</published>
+  </entry>
+  <entry>
+    <id>https://mathieuduponchelle.github.io/2014-01-20-Announcing-Fundraising-Campaign.html</id>
+    <title>Announcing pitivi's fundraising campaign !</title>
+    <updated>2014-01-20T00:00:00+00:00</updated>
+    <content type="html">&lt;h1&gt;Our team&lt;/h1&gt;
+&lt;p&gt;I've been a part of the Pitivi story on and off since three years now, whenever I could find time really. I've loved
+every moment I've spent in the community, I've made friends, I've learnt good engineering practices, how to fit in a team, how
+to communicate clearly, and so much more I can't even start to list.&lt;/p&gt;
+&lt;p&gt;Not gonna tell the whole story because that would be boring to write and even more to read, but eventually and naturally
+I became a maintainer alongside Thibault and Jean-François. Jean-François has been around the project for 10 years now, he's awesome,
+a really dedicated guy. Thibault and I are friends since a long time, well before I started programming, I've been his padawan for the
+best part of my initiation to programming and Free Software, and he's a great Jedi !&lt;/p&gt;
+&lt;p&gt;Recently, Alexandru Balut has also started to work with us again, I don't know him as closely as I know Jeff and Thib, but he's
+commited so much things in the last two months that we've had a hard time reviewing it and preparing the campaign at the same time !&lt;/p&gt;
+&lt;p&gt;I don't know him as well on a personal level as I know Jeff and Thibault, but I like working with him a lot, he makes great and
+clean patches and has a seemingly boundless dedication to cleaning up the code and making it elegant.&lt;/p&gt;
+&lt;p&gt;All this to say I'm proud and happy to be part of such a team. Free Software's most important asset isn't the code, the bug
+trackers, the continuous integration servers, it's the people, and these folks are great, I can't stress that enough.&lt;/p&gt;
+&lt;h1&gt;Our project&lt;/h1&gt;
+&lt;p&gt;You might have guessed by now that our project isn't to grow genetically modified potatoes in the Southern part of Italy,
+even though that seems like a compelling idea at first sight. Give it a second thought and you'll realize the hygrometry
+of that region is absolutely not appropriate, give it a third one for good measure then forget about it.&lt;/p&gt;
+&lt;p&gt;I'll briefly explain what it is that makes of the Pitivi project the most exciting open source video editing project in my
+very humble opinion.
+The reason goes down to our design choices. We've played the long game, and based ourselves on the gstreamer set of
+libraries and plugins. For a visual and greatly simplified explanation of how that choice is a good thing, you can refer
+to &lt;a href="http://fundraiser.pitivi.org/gstreamer"&gt;this animation&lt;/a&gt;, then have a look at the
+&lt;a href="http://gstreamer.freedesktop.org/documentation/plugins.html"&gt;impressive&lt;/a&gt; list of plugins that we can tap into.
+GStreamer is where most of the companies interested in open source multimedia invest their money and their time, it's where
+most of the exciting stuff happens and it's definitely where an ambitious video editing application has to look at.&lt;/p&gt;
+&lt;p&gt;We also have made the choice of clearly splitting our editing core, our model, from our view, and made it a library,
+with an awesome API, gstreamer-editing-services, directly usable from C, C++, javascript, python and every language
+supported by introspection, and possibly any other language provided someone writes bindings for it.
+That choice was the right one, decoupling components always pays off in the long term, and we are finally starting
+to see the benefits of that choice: Pitivi has seen its size divided by two, while gaining in stability.&lt;/p&gt;
+&lt;p&gt;This makes it much easier for new contributors to come in, and for us to maintain it.&lt;/p&gt;
+&lt;p&gt;tl; dr: GStreamer rocks, and GES is great.&lt;/p&gt;
+&lt;p&gt;With that said, we are aware that the stabilization is not yet over. Pitivi is in a beta state, and it still needs intensive
+work to make it so we kill the bugs and they never come back. To do this, we must extend our test suites, we must
+continue collaborating with GStreamer devs, we must create better ways for users to share with us failing scenarios. For all
+this we've got great ideas, but what we miss is being able to work full-time on the project, which basically means we need
+money, for reasons I don't think I have to detail !&lt;/p&gt;
+&lt;p&gt;I'm afraid this might sound a little boring, as we all tend to be more attracted to feature promises and shiny things,
+and that's obviously what we all deserve, but I think that's not what we need right now (hope I got the quote right).&lt;/p&gt;
+&lt;p&gt;Fortunately we estimate that phase to be around 6 months long for one person full time, we did &lt;em&gt;a lot&lt;/em&gt; of the groundwork
+already, and we just have to expand on that, and track the corner cases cause the devil is in the details, and he knows
+how to hide damn well.&lt;/p&gt;
+&lt;p&gt;After that, we will be ready to unleash GStreamer's power, and come up with great features in no time, and ride on the
+work of others to get for example hardware acceleration basically for free. From that moment, when we'll have released
+1.0, things will get seriously real, and our backers will be able to vote on the features they care the most about.&lt;/p&gt;
+&lt;p&gt;I've worked on the voting system and I think it's a great thing to have, I'm really impatient to see it used in real life
+(and hopefully not break), I think I'll write a more technical blogpost on its implementation.&lt;/p&gt;
+&lt;h2&gt;How you can help.&lt;/h2&gt;
+&lt;p&gt;I'm writing this the day before launching the campaign, and I have the website in the background, taunting me with its
+&amp;quot;0 € raised, 0 backers&amp;quot; message. Fortunately I also have the spinning social widgets to cheer me up a bit, but it's not
+exactly enough to get me rid of my anxiousness.&lt;/p&gt;
+&lt;p&gt;I know that what we do is right, and that requesting money for stabilization first is the correct and honest thing to do.&lt;/p&gt;
+&lt;p&gt;Obviously, I hope that you will donate to the campaign, but I also hope that after taking the time to read that rather
+lengthy blogpost in its entirety, you will be able to spread the message, and explain why what we do is important and good.&lt;/p&gt;
+&lt;p&gt;Free and Open Source video editing is something that can help make the world a better place, as it gives people all
+around the world one more tool to express themselves, fight oppression, create happiness and spread love.&lt;/p&gt;
+&lt;p&gt;Hoping you'll spread the love too, thanks for reading !&lt;/p&gt;
+</content>
+    <link href="https://mathieuduponchelle.github.io/2014-01-20-Announcing-Fundraising-Campaign.html" rel="alternate" type="text/html" title="Announcing pitivi's fundraising campaign !"/>
+    <summary>We are launching a crowdfunding campaign, and you, yes *you* can help !</summary>
+    <published>2014-01-20T00:00:00+00:00</published>
+  </entry>
+  <entry>
+    <id>https://mathieuduponchelle.github.io/2013-06-08-Fun-with-videomixer.html</id>
+    <title>Fun with videomixer</title>
+    <updated>2013-06-08T00:00:00+00:00</updated>
+    <content type="html">&lt;h1&gt;Introduction&lt;/h1&gt;
+&lt;p&gt;When you've spent the whole week painstakingly fixing bugs, coding something just for fun is a welcome breath of fresh air.
+These last weeks, one of my areas of work has been the gstreamer &amp;quot;videomixer&amp;quot; element. It needed some love, and still needs,
+but I've been able to fix some of the issues we had.
+When we first ported gstreamer-editing-services and gnonlin to gstreamer 1.0, even the most basic editing became impossible.
+That was quite frustrating to say the least, and being able to do edition once again feels extremely good !&lt;/p&gt;
+&lt;p&gt;One of the great things with the extraction of pitivi's edition code to GES is that you can now write fancy scripts to make
+automated edition, and with a little luck you won't encounter a bug on your way.
+At the end of this article, you will find a video showing an example result.&lt;/p&gt;
+&lt;p&gt;There haven't been much tutorials about using GES, the only way to learn that is either looking at the examples on the git repo,
+or to directly look at pitivi's source code.
+With that blogpost I'm gonna try to present that cool library, while coding something fun. The idea from the script came from
+that video : http://vimeo.com/35770492, linked to me by Nicolas Dufresne. We won't be able to reproduce the most advanced
+bits of this video, as it also seems to be content-aware at some points, but we will make a fun script nevertheless !&lt;/p&gt;
+&lt;h2&gt;Sounds sweet, where's the code ?&lt;/h2&gt;
+&lt;pre&gt;&lt;code class="language-python"&gt;from gi.repository import GstPbutils
+from gi.repository import Gtk
+from gi.repository import Gst
+from gi.repository import GES
+from gi.repository import GObject
+
+import sys
+import signal
+
+def handle_sigint(sig, frame):
+    Gtk.main_quit()
+
+def busMessageCb(unused_bus, message):
+    if message.type == Gst.MessageType.EOS:
+        print &amp;quot;eos&amp;quot;
+        Gtk.main_quit()
+
+def duration_querier(pipeline):
+    print pipeline.query_position(Gst.Format.TIME)
+    return True
+
+def mylog(x):
+    return (x / (1 + x))
+
+def createLayers(timeline, asset):
+    step = 1.0 / int(sys.argv[2])
+    alpha = step
+    for i in range(int(sys.argv[2])):
+        layer = timeline.append_layer()
+        clip = layer.add_asset(asset, i * Gst.SECOND * 0.3, 0, asset.get_duration(), GES.TrackType.UNKNOWN)
+        for source in clip.get_children(False):
+            if source.props.track_type == GES.TrackType.VIDEO:
+                break
+
+        source.set_child_property(&amp;quot;alpha&amp;quot;, alpha)
+        alpha += step
+
+if __name__ ==&amp;quot;__main__&amp;quot;:
+    if len(sys.argv) &amp;lt; 4:
+        print &amp;quot;usage : &amp;quot; + sys.argv[0] + &amp;quot; file:///video/uri number_of_layers file:///audio/uri [file:///output_uri]&amp;quot;
+        print &amp;quot;If you specify a output uri, the pipeline will get rendered&amp;quot;
+        exit(0)
+
+    GObject.threads_init()
+    Gst.init(None)
+    GES.init()
+
+    timeline = GES.Timeline.new_audio_video()
+
+    asset = GES.UriClipAsset.request_sync(sys.argv[1])
+    audio_asset = GES.UriClipAsset.request_sync(sys.argv[3])
+
+    createLayers(timeline, asset)
+
+    timeline.commit()
+
+    layer = timeline.append_layer()
+
+    layer.add_asset(audio_asset, 0, 0, timeline.get_duration(), GES.TrackType.AUDIO)
+
+    pipeline = GES.Pipeline()
+    pipeline.set_timeline(timeline)
+
+    container_profile = \
+        GstPbutils.EncodingContainerProfile.new(&amp;quot;pitivi-profile&amp;quot;,
+                                                &amp;quot;Pitivi encoding profile&amp;quot;,
+                                                Gst.Caps(&amp;quot;video/webm&amp;quot;),
+                                                None)
+
+    video_profile = GstPbutils.EncodingVideoProfile.new(Gst.Caps(&amp;quot;video/x-vp8&amp;quot;),
+                                                        None,
+                                                        Gst.Caps(&amp;quot;video/x-raw&amp;quot;),
+                                                        0)
+
+    container_profile.add_profile(video_profile)
+
+    audio_profile = GstPbutils.EncodingAudioProfile.new(Gst.Caps(&amp;quot;audio/x-vorbis&amp;quot;),
+                                                        None,
+                                                        Gst.Caps(&amp;quot;audio/x-raw&amp;quot;),
+                                                        0)
+
+    container_profile.add_profile(audio_profile)
+
+    if len(sys.argv) &amp;gt; 4:
+        pipeline.set_render_settings(sys.argv[4], container_profile)
+        pipeline.set_mode(GES.PipelineFlags.RENDER)
+
+    pipeline.set_state(Gst.State.PLAYING)
+
+    bus = pipeline.get_bus()
+    bus.add_signal_watch()
+    bus.connect(&amp;quot;message&amp;quot;, busMessageCb)
+    GObject.timeout_add(300, duration_querier, pipeline)
+
+    signal.signal(signal.SIGINT, handle_sigint)
+    Gtk.main()
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2&gt;Looks fine, explain it now !&lt;/h2&gt;
+&lt;p&gt;I'll select the meaningful bits, assuming you know python well enough. If not, this is easily translatable to C,
+or any language that can take advantage of GObject introspection's dynamic bindings.&lt;/p&gt;
+&lt;p&gt;First, let's look at the main.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;    timeline = GES.Timeline.new_audio_video()
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;This convenience function will create a timeline with an audio and a video track for us.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;    asset = GES.UriClipAsset.request_sync(sys.argv[1])
+    audio_asset = GES.UriClipAsset.request_sync(sys.argv[3])
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;This is part of the new API. Thanks to that, GES will only discover the file once, discovering meaning learning
+what streams are contained in the media, how long it lasts and other infos. Previously, we would discover
+the file each time we created an object with it, which was not optimized. request_sync is not what you would use
+in a GUI application, instead you would want to request_async, then take action in a callback.&lt;/p&gt;
+&lt;p&gt;Now, let's look at createLayers, which is where the magic happens.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;    layer = timeline.append_layer()
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;A timeline is a stack of layers, with ascending &amp;quot;priorities&amp;quot;. Thanks to these layers, we are able for example
+to decide if a transition has to be created between two track objects, or, if two clips have an alpha of 1.0,
+which one will be the &amp;quot;topmost&amp;quot; one.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;    clip = layer.add_asset(asset, i * Gst.SECOND * 0.3, 0, asset.get_duration(), GES.TrackType.UNKNOWN)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;This code is very interesting. We are basically asking GES to : create a clip based on the asset we
+discovered earlier, set its start a i * 0.3 seconds, its inpoint (the place in the file from which it will
+be played) to 0, and its duration to the original duration of the file.
+The last argument means : for every kind of stream you find, add it if the timeline contains an
+appropriate track (here, audio and video).
+We could have decided to only keep the VIDEO, but that was a good occasion to show that.&lt;/p&gt;
+&lt;p&gt;With that logic, we can now see that the resulting timeline is gonna be sort of a &amp;quot;canon&amp;quot;:
+one video mixed with n earlier versions of itself.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;    for source in clip.get_children():
+        if source.props.track_type == GES.TrackType.VIDEO:
+        break
+ 
+    source.set_child_property(&amp;quot;alpha&amp;quot;, alpha)
+    alpha = mylog(alpha)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Here, I browse the children of my timeline element, and when I find a video element, I set the
+alpha of an element inside it, and update the alpha. The log here makes it so each layer
+has the same perceived opacity at the end.&lt;/p&gt;
+&lt;p&gt;Afterwards, we create a pipeline to play our timeline, and if needed we set it to the render mode,
+that code is quite self-explanatory.&lt;/p&gt;
+&lt;p&gt;We now just have to wait until the EOS, or until the user interrupts the program.&lt;/p&gt;
+&lt;p&gt;I use Gtk.main() out of pure laziness, a GLib mainloop would work as well.&lt;/p&gt;
+&lt;h2&gt;How does it look like then ?&lt;/h2&gt;
+&lt;p&gt;I really hope this example made you want to learn more about GES, it's a great library that lets
+you do awesome stuff in very few lines of code, we're in active development and the best is still to come !&lt;/p&gt;
+&lt;p&gt;Here is the promised video:&lt;/p&gt;
+&lt;iframe width="640" height="360" src="http://www.youtube.com/embed/grTxE6sFIJM?feature=player_detailpage" frameborder="0"&gt; &lt;/iframe&gt;
+&lt;p&gt;Notice the code was only tried with mp4 containing h264, feel free to report any issues with other codecs on my github !&lt;/p&gt;
+</content>
+    <link href="https://mathieuduponchelle.github.io/2013-06-08-Fun-with-videomixer.html" rel="alternate" type="text/html" title="Fun with videomixer"/>
+    <summary>using gstreamer-editing-services to make the world a better place.</summary>
+    <published>2013-06-08T00:00:00+00:00</published>
+  </entry>
+</feed>
