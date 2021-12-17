@@ -24,7 +24,7 @@
   color: lightgrey;
 }
 
-#main p > code {
+#main :not(pre) > code {
   font-weight: bold;
   color: lightgrey;
 }
