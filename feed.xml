@@ -2,10 +2,237 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
   <id>https://mathieuduponchelle.github.io/</id>
   <title>blog</title>
-  <updated>2021-12-16T15:43:50.063592+00:00</updated>
+  <updated>2021-12-17T14:57:28.854020+00:00</updated>
   <link href="https://mathieuduponchelle.github.io/" type="text/html"/>
   <link href="https://mathieuduponchelle.github.io/feed.xml" rel="self" type="application/atom+xml"/>
   <generator uri="https://lkiesow.github.io/python-feedgen" version="0.9.0">python-feedgen</generator>
+  <entry>
+    <id>https://mathieuduponchelle.github.io/2021-12-17-awstranscriber.html</id>
+    <title>awstranscriber</title>
+    <updated>2021-12-18T00:00:00+00:00</updated>
+    <content type="html">&lt;h1&gt;awstranscriber, a GStreamer wrapper for AWS Transcribe API&lt;/h1&gt;
+&lt;p&gt;If all you want to know is how to use the element, you can head over &lt;a href="2021-12-17-awstranscriber.html#quick-example"&gt;here&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;I actually implemented this element over a year ago, but never got around to
+posting about it, so this will be the first post in a series about speech-to-text,
+text processing and closed captions in GStreamer.&lt;/p&gt;
+&lt;p&gt;Speech-to-text has a long history, with multiple open source libraries implementing
+a variety of approaches for that purpose&lt;sup&gt;&lt;a href="#stt-libs"&gt;[1]&lt;/a&gt;&lt;/sup&gt;,
+but they don't necessarily offer either the same accuracy or ease of use as proprietary
+services such as &lt;a href="https://aws.amazon.com/transcribe/"&gt;Amazon's Transcribe API&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;My overall goal for the project, which &lt;code&gt;awstranscriber&lt;/code&gt; was only a part of, was the
+ability to generate a transcription for live streams and inject it into the video
+bitstream or carry it alongside.&lt;/p&gt;
+&lt;p&gt;The main requirements were to keep it as synchronized as possible with the content,
+while keeping latency in check. We'll see how these requirements informed the design
+of some of the elements, in particular when it came to closed captions.&lt;/p&gt;
+&lt;p&gt;My initial intuition about text was, to quote a famous philosopher: &amp;quot;&lt;em&gt;How hard can
+it be?&lt;/em&gt;&amp;quot;; turns out the answer was &amp;quot;&lt;strong&gt;actually more than I would have hoped&lt;/strong&gt;&amp;quot;.&lt;/p&gt;
+&lt;p id=stt-libs&gt;
+    &lt;sup&gt;[1] &lt;code&gt;pocketsphinx&lt;/code&gt;, &lt;code&gt;Kaldi&lt;/code&gt; just to name a few&lt;/sup&gt;
+&lt;/p&gt;
+&lt;h2&gt;The element&lt;/h2&gt;
+&lt;p&gt;In GStreamer terms, the &lt;code&gt;awstranscriber&lt;/code&gt; element is pretty straightforward: take
+audio in, push timed text out.&lt;/p&gt;
+&lt;p&gt;The Streaming API for AWS is (roughly) synchronous: past a 10 second buffer duration,
+the service will only consume audio data in real time, I thus decided to make
+the element a live one by:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;synchronizing its input to the clock&lt;/li&gt;
+&lt;li&gt;returning &lt;code&gt;NO_PREROLL&lt;/code&gt; from its state change function&lt;/li&gt;
+&lt;li&gt;reporting a latency&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Event handling is fairly light: The element doesn't need to handle seeks in
+any particular manner, only consumes and produces fixed caps, and can simply
+disconnect from and reconnect to the service when it gets flushed.&lt;/p&gt;
+&lt;p&gt;As the element is designed for a live use case with a fixed maximum latency,
+it can't wait for complete sentences to be formed before pushing text out. And
+as one intended consumer for its output is closed captions, it also can't just
+push the same sentence multiple times as it is getting constructed, because that would
+completely overflow the CEA 608 bandwidth (more about that in later blog posts, but
+think roughly 2 characters per video frame maximum).&lt;/p&gt;
+&lt;p&gt;Instead, the goal is for the element to push one word (or punctuation symbol)
+at a time.&lt;/p&gt;
+&lt;h2&gt;Initial implementation&lt;/h2&gt;
+&lt;p&gt;When I initially implemented the element, the Transcribe API had a pretty
+significant flaw for my use case: while it provided me with &amp;quot;partial&amp;quot; results,
+which sounded great for lowering the latency, there was no way to identify
+partial results between messages.&lt;/p&gt;
+&lt;p&gt;Here's an illustration (this is just an example, the actual output is more
+complex).&lt;/p&gt;
+&lt;p&gt;After feeding five seconds of audio data to the service, I would receive a first
+message:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-JSON"&gt;{
+  words: [
+    {
+      start_time: 0.5,
+      end_time: 0.8,
+      word: &amp;quot;Hello&amp;quot;,
+    }
+  ]
+
+  partial: true,
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Then after one more second I would receive:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-JSON"&gt;{
+  words: [
+    {
+      start_time: 0.5,
+      end_time: 0.9,
+      word: &amp;quot;Hello&amp;quot;,
+    },
+    {
+      start_time: 1.1,
+      end_time: 1.6,
+      word: &amp;quot;World&amp;quot;,
+    }
+  ]
+
+  partial: true,
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;and so on, until the service decided it was done with the sentence and started a
+new one. There were multiple problems with this, compounding each other:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;The service seemed to have no predictable &amp;quot;cut-off&amp;quot; point, that is it would sometimes
+provide me with 30-second long sentences before considering it finished (&lt;code&gt;partial: false&lt;/code&gt;)
+and starting a new one.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;As long as a result was partial, the service could change &lt;em&gt;any&lt;/em&gt; of the words it had
+previously detected, even if they were first reported 10 seconds prior.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;The actual timing of the items could also shift (slightly)&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;This made the task of outputting one word at a time, just in time to honor the user-provided
+latency, seemingly impossible: as items could not be strictly identified from one
+partial result to the next, I could not tell whether a given word whose end time matched with
+the running time of the element had already been pushed or had been replaced with
+a new interpretation by the service.&lt;/p&gt;
+&lt;p&gt;Continuing with the above example, and admitting a 10-second latency, I could
+decide at 9 seconds running time to push &amp;quot;Hello&amp;quot;, but then receive a new partial
+result:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-JSON"&gt;{
+  words: [
+    {
+      start_time: 0.5,
+      end_time: 1.0,
+      word: &amp;quot;Hey&amp;quot;,
+    },
+    {
+      start_time: 1.1,
+      end_time: 1.6,
+      word: &amp;quot;World&amp;quot;,
+    },
+    ...
+  ]
+
+  partial: true,
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;What to then do with that &amp;quot;Hey&amp;quot;? Was it a new word that ought to be pushed?
+An old one with a new meaning arrived too late that ought to be discarded?
+Artificial intelligence attempting first contact?&lt;/p&gt;
+&lt;p&gt;Fortunately, after some head scratching and ~~some~~lots of blankly looking at the
+JSON, I noticed a behavior which while undocumented seemed to always hold true:
+while any feature of an item could change, the start time would never grow past
+its initial value.&lt;/p&gt;
+&lt;p&gt;Given that, I finally managed to write some quite convoluted code that ended up
+yielding useful results, though punctuation was very hit and miss, and needed some
+more complex conditions to (sometimes) get output.&lt;/p&gt;
+&lt;p&gt;You can still see that code in all its glory &lt;a href="2021-12-17-awstranscriber.html#quick-example"&gt;here&lt;/a&gt;, I'm happy to say that it
+is gone now!&lt;/p&gt;
+&lt;h2&gt;Second iteration&lt;/h2&gt;
+&lt;p&gt;Supposedly, you always need to write a piece of code three times before it's
+good, but I'm happy with two in this case.&lt;/p&gt;
+&lt;p&gt;6 months ago or so, I stumbled upon an innocuously titled &lt;a href="https://aws.amazon.com/blogs/machine-learning/amazon-transcribe-now-supports-partial-results-stabilization-for-streaming-audio/"&gt;blog post&lt;/a&gt; from
+AWS' machine learning team:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Improve the streaming transcription experience with Amazon Transcribe partial results stabilization&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;And with those few words, all my problems were gone!&lt;/p&gt;
+&lt;p&gt;In practice when this feature is enabled, the individual words that form a
+partial result are explicitly marked as stable: once that is the case, they will
+no longer change, either in terms of timing or contents.&lt;/p&gt;
+&lt;p&gt;Armed with this, I simply removed all the ugly, complex, scarily fragile code
+from the previous iteration, and replaced it all with a single, satisfyingly
+simple &lt;code&gt;index&lt;/code&gt; variable: when receiving a new partial result, simply push all
+words from &lt;code&gt;index&lt;/code&gt; to &lt;code&gt;last_stable_result&lt;/code&gt;, update &lt;code&gt;index&lt;/code&gt;, done.&lt;/p&gt;
+&lt;p&gt;The output was not negatively impacted in any way, in fact now the element
+actually pushes out punctuation reliably as well, which doesn't hurt.&lt;/p&gt;
+&lt;p&gt;I also exposed a property on the element to let the user control how
+aggressively the service actually stabilizes results, offering a
+trade-off between latency and accuracy.&lt;/p&gt;
+&lt;h2&gt;Quick example&lt;/h2&gt;
+&lt;p&gt;If you want to test the element, you'll need to build &lt;a href="https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs"&gt;gst-plugins-rs&lt;/a&gt;&lt;sup&gt;&lt;a href="#gst-rusoto-tip"&gt;[1]&lt;/a&gt;&lt;/sup&gt;,
+set up an AWS account, and &lt;a href="https://console.aws.amazon.com/transcribe/"&gt;obtain credentials&lt;/a&gt; which you can either
+store in a credentials file, or provide as environment variables to
+&lt;a href="https://github.com/rusoto/rusoto/blob/master/AWS-CREDENTIALS.md"&gt;rusoto&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Once that's done, and you have installed the plugin in the right place or set
+the &lt;code&gt;GST_PLUGIN_PATH&lt;/code&gt; environment variable to the directory where the plugin
+got built,you should be able to run such a pipeline:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-shell"&gt;gst-launch-1.0 uridecodebin uri=https://storage.googleapis.com/www.mathieudu.com/misc/chaplin.mkv name=d d. ! audio/x-raw ! queue ! audioconvert ! awstranscriber ! fakesink dump=true
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Example output:&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-shell"&gt;Setting pipeline to PAUSED ...
+Pipeline is live and does not need PREROLL ...
+Pipeline is PREROLLED ...
+Setting pipeline to PLAYING ...
+New clock: GstSystemClock
+Redistribute latency...
+Redistribute latency...
+Redistribute latency...0.0 %)
+00000000 (0x7f7618011a80): 49 27 6d                                         I'm             
+00000000 (0x7f7618011ac0): 73 6f 72 72 79                                   sorry           
+00000000 (0x7f7618011b00): 2e                                               .               
+00000000 (0x7f7618011e10): 49                                               I               
+00000000 (0x7f76180120c0): 64 6f 6e 27 74                                   don't           
+00000000 (0x7f7618012100): 77 61 6e 74                                      want            
+00000000 (0x7f76180127a0): 74 6f                                            to              
+00000000 (0x7f7618012c70): 62 65                                            be              
+00000000 (0x7f7618012cb0): 61 6e                                            an              
+00000000 (0x7f7618012d70): 65 6d 70 65 72 6f 72                             emperor         
+00000000 (0x7f7618012db0): 2e                                               .               
+00000000 (0x7f7618012df0): 54 68 61 74 27 73                                That's          
+00000000 (0x7f7618012e30): 6e 6f 74                                         not             
+00000000 (0x7f7618012e70): 6d 79                                            my              
+00000000 (0x7f7618012eb0): 62 75 73 69 6e 65 73 73                          business
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;I could probably recite that whole &amp;quot;The dictator&amp;quot; speech by now by the
+way, one more clip that is now ruined for me. The &lt;a href="https://www.youtube.com/watch?v=aqz-KE-bpKQ"&gt;predicaments&lt;/a&gt; of multimedia
+engineering!&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;gst-inspect-1.0 awstranscriber&lt;/code&gt; for more information on its properties.&lt;/p&gt;
+&lt;p id=gst-rusoto-tip&gt;
+    &lt;sup&gt;[1] you don't need to build the entire project, but instead just&lt;code&gt;cd /net/rusoto&lt;/code&gt;
+    before running &lt;code&gt;cargo build&lt;/code&gt;
+    &lt;/sup&gt;
+&lt;/p&gt;
+&lt;h2&gt;Thanks&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;Sebastian Dröge at Centricular (gst Rust goodness)&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Jordan Petridis at Centricular (help with the initial implementation)&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href="https://www.cablecast.tv/"&gt;cablecast&lt;/a&gt; for sponsoring this work!&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Next&lt;/h2&gt;
+&lt;p&gt;In future blog posts, I will talk about closed captions, probably make
+a few mistakes in the process, and explain why text processing isn't
+necessarily all that easy.&lt;/p&gt;
+&lt;p&gt;Feel free to comment if you have issues, or actually end up implementing
+interesting stuff using this element!&lt;/p&gt;
+</content>
+    <link href="https://mathieuduponchelle.github.io/2021-12-17-awstranscriber.html" rel="alternate" type="text/html" title="awstranscriber"/>
+    <summary>Live Speech To Text with GStreamer and AWS</summary>
+    <published>2021-12-18T00:00:00+00:00</published>
+  </entry>
   <entry>
     <id>https://mathieuduponchelle.github.io/2021-12-14-webrtcsink.html</id>
     <title>webrtcsink</title>

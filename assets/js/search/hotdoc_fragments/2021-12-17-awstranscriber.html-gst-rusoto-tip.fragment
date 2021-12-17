@@ -1,0 +1,1 @@
+fragment_downloaded_cb({"url":"2021-12-17-awstranscriber.html#gst-rusoto-tip","fragment":"\n    [1] you don't need to build the entire project, but instead justcd /net/rusoto\n    before running cargo build\n    \n\n"});

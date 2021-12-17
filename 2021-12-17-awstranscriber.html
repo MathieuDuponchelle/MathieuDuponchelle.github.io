@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<base href=".">
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+
+<title>awstranscriber</title>
+
+<link rel="stylesheet" href="assets/css/custom_bootstrap.css" type="text/css">
+<link rel="stylesheet" href="assets/css/bootstrap-toc.min.css" type="text/css">
+<link rel="stylesheet" href="assets/css/frontend.css" type="text/css">
+<link rel="stylesheet" href="assets/css/jquery.mCustomScrollbar.min.css">
+<link rel="stylesheet" href="assets/js/search/enable_search.css" type="text/css">
+
+<link rel="stylesheet" href="assets/css/blog.css" type="text/css">
+<link rel="stylesheet" href="assets/css/prism-tomorrow.css" type="text/css">
+
+<script src="assets/js/mustache.min.js"></script>
+<script src="assets/js/jquery.js"></script>
+<script src="assets/js/bootstrap.js"></script>
+<script src="assets/js/scrollspy.js"></script>
+<script src="assets/js/typeahead.jquery.min.js"></script>
+<script src="assets/js/search.js"></script>
+<script src="assets/js/compare-versions.js"></script>
+<script src="assets/js/jquery.mCustomScrollbar.concat.min.js"></script>
+<script src="assets/js/bootstrap-toc.min.js"></script>
+<script src="assets/js/jquery.touchSwipe.min.js"></script>
+<script src="assets/js/anchor.min.js"></script>
+<script src="assets/js/tag_filtering.js"></script>
+<script src="assets/js/language_switching.js"></script>
+
+<script src="assets/js/lines_around_headings.js"></script>
+
+<script src="assets/js/prism-core.js"></script>
+<script src="assets/js/prism-autoloader.js"></script>
+<script src="assets/js/prism_autoloader_path_override.js"></script>
+<script src="assets/js/trie.js"></script>
+<script src="assets/js/github-comment-loader.js"></script>
+
+
+</head>
+
+<body class="no-script
+">
+
+<script>
+$('body').removeClass('no-script');
+</script>
+
+<nav class="navbar navbar-fixed-top navbar-default" id="topnav">
+	<div class="container-fluid">
+		<div class="navbar-right">
+			<a id="toc-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar-wrapper" aria-expanded="false">
+				<span class="sr-only">Toggle navigation</span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+			</button>
+			<form class="navbar-form pull-right" id="navbar-search-form">
+                               <div class="form-group has-feedback">
+                                       <input type="text" class="form-control input-sm" name="search" id="sidenav-lookup-field" placeholder="search" disabled>
+				       <span class="glyphicon glyphicon-search form-control-feedback" id="search-mgn-glass"></span>
+                               </div>
+                        </form>
+		</div>
+		<div class="navbar-header">
+			<a id="sidenav-toggle">
+				<span class="glyphicon glyphicon-menu-right"></span>
+				<span class="glyphicon glyphicon-menu-left"></span>
+			</a>
+			<a id="home-link" href="index.html" class="hotdoc-navbar-brand">
+				<img src="assets/images/home.svg" alt="Home">
+			</a>
+		</div>
+		<div class="navbar-collapse collapse" id="navbar-wrapper">
+			<ul class="nav navbar-nav" id="menu">
+							</ul>
+			<div class="hidden-xs hidden-sm navbar-text navbar-center">
+							</div>
+		</div>
+	</div>
+</nav>
+
+<main>
+<div data-extension="core" data-hotdoc-in-toplevel="True" data-hotdoc-project="blog" data-hotdoc-ref="2021-12-17-awstranscriber.html" class="page_container" id="page-wrapper">
+<script src="assets/js/utils.js"></script>
+
+<div class="panel panel-collapse oc-collapsed" id="sidenav" data-hotdoc-role="navigation">
+	<script src="assets/js/navigation.js"></script>
+	<script src="assets/js/sitemap.js"></script>
+</div>
+
+<div id="body">
+	<div id="main">
+				    <div id="page-description" data-hotdoc-role="main">
+        <h1 id="awstranscriber-a-gstreamer-wrapper-for-aws-transcribe-api">awstranscriber, a GStreamer wrapper for AWS Transcribe API</h1>
+<p>If all you want to know is how to use the element, you can head over <a href="2021-12-17-awstranscriber.html#quick-example">here</a>.</p>
+<p>I actually implemented this element over a year ago, but never got around to
+posting about it, so this will be the first post in a series about speech-to-text,
+text processing and closed captions in GStreamer.</p>
+<p>Speech-to-text has a long history, with multiple open source libraries implementing
+a variety of approaches for that purpose<sup><a href="2021-12-17-awstranscriber.html#stt-libs">[1]</a></sup>,
+but they don't necessarily offer either the same accuracy or ease of use as proprietary
+services such as <a href="https://aws.amazon.com/transcribe/">Amazon's Transcribe API</a>.</p>
+<p>My overall goal for the project, which <code>awstranscriber</code> was only a part of, was the
+ability to generate a transcription for live streams and inject it into the video
+bitstream or carry it alongside.</p>
+<p>The main requirements were to keep it as synchronized as possible with the content,
+while keeping latency in check. We'll see how these requirements informed the design
+of some of the elements, in particular when it came to closed captions.</p>
+<p>My initial intuition about text was, to quote a famous philosopher: "<em>How hard can
+it be?</em>"; turns out the answer was "<strong>actually more than I would have hoped</strong>".</p>
+<p id="stt-libs">
+    <sup>[1] <code>pocketsphinx</code>, <code>Kaldi</code> just to name a few</sup>
+</p>
+<h2 id="the-element">The element</h2>
+<p>In GStreamer terms, the <code>awstranscriber</code> element is pretty straightforward: take
+audio in, push timed text out.</p>
+<p>The Streaming API for AWS is (roughly) synchronous: past a 10 second buffer duration,
+the service will only consume audio data in real time, I thus decided to make
+the element a live one by:</p>
+<ul>
+<li>synchronizing its input to the clock</li>
+<li>returning <code>NO_PREROLL</code> from its state change function</li>
+<li>reporting a latency</li>
+</ul>
+<p>Event handling is fairly light: The element doesn't need to handle seeks in
+any particular manner, only consumes and produces fixed caps, and can simply
+disconnect from and reconnect to the service when it gets flushed.</p>
+<p>As the element is designed for a live use case with a fixed maximum latency,
+it can't wait for complete sentences to be formed before pushing text out. And
+as one intended consumer for its output is closed captions, it also can't just
+push the same sentence multiple times as it is getting constructed, because that would
+completely overflow the CEA 608 bandwidth (more about that in later blog posts, but
+think roughly 2 characters per video frame maximum).</p>
+<p>Instead, the goal is for the element to push one word (or punctuation symbol)
+at a time.</p>
+<h2 id="initial-implementation">Initial implementation</h2>
+<p>When I initially implemented the element, the Transcribe API had a pretty
+significant flaw for my use case: while it provided me with "partial" results,
+which sounded great for lowering the latency, there was no way to identify
+partial results between messages.</p>
+<p>Here's an illustration (this is just an example, the actual output is more
+complex).</p>
+<p>After feeding five seconds of audio data to the service, I would receive a first
+message:</p>
+<pre><code class="language-JSON">{
+  words: [
+    {
+      start_time: 0.5,
+      end_time: 0.8,
+      word: "Hello",
+    }
+  ]
+
+  partial: true,
+}
+</code></pre>
+<p>Then after one more second I would receive:</p>
+<pre><code class="language-JSON">{
+  words: [
+    {
+      start_time: 0.5,
+      end_time: 0.9,
+      word: "Hello",
+    },
+    {
+      start_time: 1.1,
+      end_time: 1.6,
+      word: "World",
+    }
+  ]
+
+  partial: true,
+}
+</code></pre>
+<p>and so on, until the service decided it was done with the sentence and started a
+new one. There were multiple problems with this, compounding each other:</p>
+<ul>
+<li>
+<p>The service seemed to have no predictable "cut-off" point, that is it would sometimes
+provide me with 30-second long sentences before considering it finished (<code>partial: false</code>)
+and starting a new one.</p>
+</li>
+<li>
+<p>As long as a result was partial, the service could change <em>any</em> of the words it had
+previously detected, even if they were first reported 10 seconds prior.</p>
+</li>
+<li>
+<p>The actual timing of the items could also shift (slightly)</p>
+</li>
+</ul>
+<p>This made the task of outputting one word at a time, just in time to honor the user-provided
+latency, seemingly impossible: as items could not be strictly identified from one
+partial result to the next, I could not tell whether a given word whose end time matched with
+the running time of the element had already been pushed or had been replaced with
+a new interpretation by the service.</p>
+<p>Continuing with the above example, and admitting a 10-second latency, I could
+decide at 9 seconds running time to push "Hello", but then receive a new partial
+result:</p>
+<pre><code class="language-JSON">{
+  words: [
+    {
+      start_time: 0.5,
+      end_time: 1.0,
+      word: "Hey",
+    },
+    {
+      start_time: 1.1,
+      end_time: 1.6,
+      word: "World",
+    },
+    ...
+  ]
+
+  partial: true,
+}
+</code></pre>
+<p>What to then do with that "Hey"? Was it a new word that ought to be pushed?
+An old one with a new meaning arrived too late that ought to be discarded?
+Artificial intelligence attempting first contact?</p>
+<p>Fortunately, after some head scratching and ~~some~~lots of blankly looking at the
+JSON, I noticed a behavior which while undocumented seemed to always hold true:
+while any feature of an item could change, the start time would never grow past
+its initial value.</p>
+<p>Given that, I finally managed to write some quite convoluted code that ended up
+yielding useful results, though punctuation was very hit and miss, and needed some
+more complex conditions to (sometimes) get output.</p>
+<p>You can still see that code in all its glory <a href="2021-12-17-awstranscriber.html#quick-example">here</a>, I'm happy to say that it
+is gone now!</p>
+<h2 id="second-iteration">Second iteration</h2>
+<p>Supposedly, you always need to write a piece of code three times before it's
+good, but I'm happy with two in this case.</p>
+<p>6 months ago or so, I stumbled upon an innocuously titled <a href="https://aws.amazon.com/blogs/machine-learning/amazon-transcribe-now-supports-partial-results-stabilization-for-streaming-audio/">blog post</a> from
+AWS' machine learning team:</p>
+<blockquote>
+<p>Improve the streaming transcription experience with Amazon Transcribe partial results stabilization</p>
+</blockquote>
+<p>And with those few words, all my problems were gone!</p>
+<p>In practice when this feature is enabled, the individual words that form a
+partial result are explicitly marked as stable: once that is the case, they will
+no longer change, either in terms of timing or contents.</p>
+<p>Armed with this, I simply removed all the ugly, complex, scarily fragile code
+from the previous iteration, and replaced it all with a single, satisfyingly
+simple <code>index</code> variable: when receiving a new partial result, simply push all
+words from <code>index</code> to <code>last_stable_result</code>, update <code>index</code>, done.</p>
+<p>The output was not negatively impacted in any way, in fact now the element
+actually pushes out punctuation reliably as well, which doesn't hurt.</p>
+<p>I also exposed a property on the element to let the user control how
+aggressively the service actually stabilizes results, offering a
+trade-off between latency and accuracy.</p>
+<h2 id="quick-example">Quick example</h2>
+<p>If you want to test the element, you'll need to build <a href="https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs">gst-plugins-rs</a><sup><a href="2021-12-17-awstranscriber.html#gst-rusoto-tip">[1]</a></sup>,
+set up an AWS account, and <a href="https://console.aws.amazon.com/transcribe/">obtain credentials</a> which you can either
+store in a credentials file, or provide as environment variables to
+<a href="https://github.com/rusoto/rusoto/blob/master/AWS-CREDENTIALS.md">rusoto</a>.</p>
+<p>Once that's done, and you have installed the plugin in the right place or set
+the <code>GST_PLUGIN_PATH</code> environment variable to the directory where the plugin
+got built,you should be able to run such a pipeline:</p>
+<pre><code class="language-shell">gst-launch-1.0 uridecodebin uri=https://storage.googleapis.com/www.mathieudu.com/misc/chaplin.mkv name=d d. ! audio/x-raw ! queue ! audioconvert ! awstranscriber ! fakesink dump=true
+</code></pre>
+<p>Example output:</p>
+<pre><code class="language-shell">Setting pipeline to PAUSED ...
+Pipeline is live and does not need PREROLL ...
+Pipeline is PREROLLED ...
+Setting pipeline to PLAYING ...
+New clock: GstSystemClock
+Redistribute latency...
+Redistribute latency...
+Redistribute latency...0.0 %)
+00000000 (0x7f7618011a80): 49 27 6d                                         I'm             
+00000000 (0x7f7618011ac0): 73 6f 72 72 79                                   sorry           
+00000000 (0x7f7618011b00): 2e                                               .               
+00000000 (0x7f7618011e10): 49                                               I               
+00000000 (0x7f76180120c0): 64 6f 6e 27 74                                   don't           
+00000000 (0x7f7618012100): 77 61 6e 74                                      want            
+00000000 (0x7f76180127a0): 74 6f                                            to              
+00000000 (0x7f7618012c70): 62 65                                            be              
+00000000 (0x7f7618012cb0): 61 6e                                            an              
+00000000 (0x7f7618012d70): 65 6d 70 65 72 6f 72                             emperor         
+00000000 (0x7f7618012db0): 2e                                               .               
+00000000 (0x7f7618012df0): 54 68 61 74 27 73                                That's          
+00000000 (0x7f7618012e30): 6e 6f 74                                         not             
+00000000 (0x7f7618012e70): 6d 79                                            my              
+00000000 (0x7f7618012eb0): 62 75 73 69 6e 65 73 73                          business
+</code></pre>
+<p>I could probably recite that whole "The dictator" speech by now by the
+way, one more clip that is now ruined for me. The <a href="https://www.youtube.com/watch?v=aqz-KE-bpKQ">predicaments</a> of multimedia
+engineering!</p>
+<p><code>gst-inspect-1.0 awstranscriber</code> for more information on its properties.</p>
+<p id="gst-rusoto-tip">
+    <sup>[1] you don't need to build the entire project, but instead just<code>cd /net/rusoto</code>
+    before running <code>cargo build</code>
+    </sup>
+</p>
+<h2 id="thanks">Thanks</h2>
+<ul>
+<li>
+<p>Sebastian Dröge at Centricular (gst Rust goodness)</p>
+</li>
+<li>
+<p>Jordan Petridis at Centricular (help with the initial implementation)</p>
+</li>
+<li>
+<p><a href="https://www.cablecast.tv/">cablecast</a> for sponsoring this work!</p>
+</li>
+</ul>
+<h2 id="next">Next</h2>
+<p>In future blog posts, I will talk about closed captions, probably make
+a few mistakes in the process, and explain why text processing isn't
+necessarily all that easy.</p>
+<p>Feel free to comment if you have issues, or actually end up implementing
+interesting stuff using this element!</p>
+
+    </div>
+        
+
+
+        
+<hr>
+
+<div data-hotdoc-role="comments" data-github-issue-id="7" data-github-repo="MathieuDuponchelle/MathieuDuponchelle.github.io">
+</div>
+
+
+
+		
+	</div>
+	<div id="search_results">
+		<p>The results of the search are</p>
+	</div>
+	<div id="footer">
+		    
+
+	</div>
+</div>
+
+<div id="toc-column">
+	
+		<div class="edit-button">
+		
+
+	</div>
+		<div id="toc-wrapper">
+		<nav id="toc"></nav>
+	</div>
+</div>
+</div>
+</main>
+
+
+<script src="assets/js/navbar_offset_scroller.js"></script>
+</body>
+</html>
