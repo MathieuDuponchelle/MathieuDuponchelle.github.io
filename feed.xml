@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
   <id>https://mathieuduponchelle.github.io/</id>
   <title>blog</title>
-  <updated>2021-12-17T15:13:45.691029+00:00</updated>
+  <updated>2024-01-19T11:03:32.045927+00:00</updated>
   <link href="https://mathieuduponchelle.github.io/" type="text/html"/>
   <link href="https://mathieuduponchelle.github.io/feed.xml" rel="self" type="application/atom+xml"/>
   <generator uri="https://lkiesow.github.io/python-feedgen" version="0.9.0">python-feedgen</generator>
@@ -1541,54 +1541,6 @@ interesting things.&lt;/p&gt;
     <link href="https://mathieuduponchelle.github.io/2018-02-01-Python-Elements.html" rel="alternate" type="text/html" title="How to write GStreamer (1.0) elements in python (Part I)"/>
     <summary>A test audio src</summary>
     <published>2018-02-01T00:00:00+00:00</published>
-  </entry>
-  <entry>
-    <id>https://mathieuduponchelle.github.io/2016-05-26-GST-Hackfest.html</id>
-    <title>Back from the GST hackfest</title>
-    <updated>2016-05-26T00:00:00+00:00</updated>
-    <content type="html">&lt;h1&gt;Back from the GST hackfest&lt;/h1&gt;
-&lt;p&gt;I was once again kindly sponsored by &lt;a href="https://www.collabora.com/"&gt;Collabora&lt;/a&gt; to temporarily relocate my hacking environment to a place filled with awesome people.
-This time the place was &lt;a href="https://en.wikipedia.org/wiki/Thessaloniki"&gt;Thessaloniki&lt;/a&gt;, and the people were GStreamer developers.&lt;/p&gt;
-&lt;h2&gt;Getting there&lt;/h2&gt;
-&lt;p&gt;I hadn't taken any vacation since I've started working for Collabora, two years ago (mandatory &amp;quot;geez, time flies&amp;quot;), apart from one day or two for Christmas-related
-activities, so I decided I'd take two weeks, and do a little road trip across Europe. Strangely enough my girlfriend, who when I went to the Staines (near London) hackfest
-only asked when I'd come back, was already packing her swimsuit this time.&lt;/p&gt;
-&lt;p&gt;After a one-day stop in Venice (fortunately not too crowded at this time of year), and a three-day visit of &lt;a href="https://en.wikipedia.org/wiki/Dubrovnik"&gt;Dubrovnik&lt;/a&gt; aka King's landing,
-our intention was to get to Thessaloniki through Albania and arrive on the evening before the hackfest started. Albanian customs, however, didn't seem to share this intention at all,
-and we ended up having to cross Montenegro from South to North, get in Serbia, go East and be refused entry in Kosovo, go East again and finally get to Thessaloniki through Macedonia.&lt;/p&gt;
-&lt;p&gt;Needless to say we arrived at 10 A.M. on the day the hackfest started.&lt;/p&gt;
-&lt;p&gt;I briefly logged in to the IRC channel, told everyone I'd have to be excused for the day, got greeted by Edward Hervey mumbling stuff about &amp;quot;equations everywhere&amp;quot;, and
-others suggesting I should have engaged in bribery (I will not name names here), logged off and slept for 15 hours.&lt;/p&gt;
-&lt;h2&gt;Second (actually my first) day&lt;/h2&gt;
-&lt;p&gt;I arrived at the hackfest to find a nice, two-storey building reserved for our usage, and &lt;a href="https://lubosz.wordpress.com/"&gt;Lubosz Sarnecki&lt;/a&gt; in the middle of
-kilometers of cables, and enough hardware to open a small VR shop.
-He needed a powerful GPU to set up the leapmotion's &lt;a href="https://developer.leapmotion.com/gallery/blocks"&gt;blocks demo&lt;/a&gt;, and we figured my laptop would
-do the trick. We set everything up, then struggled for some time until accepting it really wouldn't be up to the task.&lt;/p&gt;
-&lt;p&gt;We ended up borrowing a desktop PC, which proved to be up to the task, and after some fiddling the demo was finally set up and working smoothly.&lt;/p&gt;
-&lt;p&gt;It was well worth the wait: leapmotion's tech is amazing, and after some time making and manipulating blocks, whoever isn't convinced about the future of VR might well
-reconsider! I'm really curious to see the games people will come up with, a VR remake of &lt;a href="https://www.youtube.com/watch?v=Ue4i44e_7W8"&gt;Black &amp;amp; White&lt;/a&gt; would
-be pretty awesome if you ask me.&lt;/p&gt;
-&lt;p&gt;More to the point, Lubosz is currently writing a GStreamer video filter to transform streams for [Insert VR headset here] consumption, but as far as I understand
-his work is still in progress, and not yet demoable.&lt;/p&gt;
-&lt;p&gt;It was already late, and after a few people had taken turns trying out the demo, the day was already gone.&lt;/p&gt;
-&lt;h2&gt;Third (actually my second) day&lt;/h2&gt;
-&lt;p&gt;My original goal for this hackfest was to implement a hotdoc extension for documenting GStreamer plugins, but with one day left that was hardly
-a completable goal, and after talking with Tim-Philipp Müller, it appeared he had more immediate concerns in terms of documentation, namely
-porting existing content to markdown. I briefly talked him into sticking to the CommonMark specification, and using hotdoc to arrange it all
-together. Olivier Crete started porting the contents of gstreamer.com, and I started work on the Plugin Writer's manual.&lt;/p&gt;
-&lt;p&gt;It was decided a new repository for the documentation would be created, and that we would update https://gstreamer.freedesktop.org/ incrementally
-with its contents, once maintainers are happy with the proposed solution. I still need to finalize my port of the manual, hopefully by the end
-of this week I'll have something decent to propose.&lt;/p&gt;
-&lt;h2&gt;Conclusion&lt;/h2&gt;
-&lt;p&gt;I'm afraid I don't have much to report on the GStreamer side of the GStreamer hackfest, hopefully others will fill that gap, I'll update this page
-with links to other people's posts.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Sebastian wrote about &lt;a href="https://coaxion.net/blog/2016/05/writing-gstreamer-plugins-and-elements-in-rust/"&gt;writing gstreamer elements in rust&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-</content>
-    <link href="https://mathieuduponchelle.github.io/2016-05-26-GST-Hackfest.html" rel="alternate" type="text/html" title="Back from the GST hackfest"/>
-    <summary>My experience at the GStreamer hackfest</summary>
-    <published>2016-05-26T00:00:00+00:00</published>
   </entry>
   <entry>
     <id>https://mathieuduponchelle.github.io/2016-02-22-DX-Hackfest.html</id>
